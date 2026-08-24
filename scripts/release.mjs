@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url';
 
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const packageDir = resolve(scriptDir, '..');
-const repoDir = resolve(packageDir, '..');
+const repoDir = packageDir;
 const packageJsonPath = join(packageDir, 'package.json');
 const releaseDir = join(packageDir, 'release');
 
@@ -112,7 +112,7 @@ if (args.dryRun) {
 // Pushing the tag is the trigger: the release workflow
 // (.github/workflows/release.yml) builds, publishes bwh-auth to npm, and creates
 // the GitHub release with the packed tarball. Local pack above is validation only.
-runVisible('git', ['add', 'ui/package.json', 'pnpm-lock.yaml'], { cwd: repoDir });
+runVisible('git', ['add', 'package.json', 'pnpm-lock.yaml'], { cwd: repoDir });
 runVisible('git', ['commit', '-m', `Release bwh-auth v${nextVersion}`], { cwd: repoDir });
 runVisible('git', ['tag', '-s', '-a', tag, '-m', `Release bwh-auth v${nextVersion}`], { cwd: repoDir });
 runVisible('git', ['push', 'origin', 'main'], { cwd: repoDir });

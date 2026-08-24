@@ -9,7 +9,7 @@ overrides:
 
 importers:
 
-  ui:
+  .:
     devDependencies:
       '@types/react':
         specifier: ^19.2.14

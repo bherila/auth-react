@@ -4,7 +4,15 @@
   "description": "Shared React auth UI and browser WebAuthn helpers for BWH applications.",
   "license": "MIT",
   "type": "module",
-  "packageManager": "pnpm@10.20.0",
+  "packageManager": "pnpm@11.12.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/bherila/auth-react.git"
+  },
+  "bugs": {
+    "url": "https://github.com/bherila/auth-react/issues"
+  },
+  "homepage": "https://github.com/bherila/auth-react#readme",
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",
   "types": "./dist/index.d.ts",
