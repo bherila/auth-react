@@ -780,6 +780,35 @@ function PasskeySection({ endpoints = {}, components, onSuccess, onError }) {
     ] })
   ] });
 }
+
+// src/relying-applications.ts
+function safeApplicationHref(url) {
+  try {
+    const parsed = new URL(url);
+    return parsed.protocol === "https:" || parsed.protocol === "http:" ? parsed.toString() : null;
+  } catch {
+    return null;
+  }
+}
+function relyingApplicationsFrom(value) {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value.flatMap((entry) => {
+    if (typeof entry !== "object" || entry === null) {
+      return [];
+    }
+    const { key, name, url } = entry;
+    if (typeof key !== "string" || typeof name !== "string" || typeof url !== "string") {
+      return [];
+    }
+    if (key === "" || name.trim() === "") {
+      return [];
+    }
+    const href = safeApplicationHref(url);
+    return href === null ? [] : [{ key, name: name.trim(), url: href }];
+  });
+}
 export {
   ChangePasswordForm,
   LoginForm,
@@ -796,5 +825,7 @@ export {
   getDefaultPasskeyName,
   isAbortError,
   isConditionalMediationAvailable,
-  registerPasskey
+  registerPasskey,
+  relyingApplicationsFrom,
+  safeApplicationHref
 };

@@ -23,6 +23,27 @@ The companion Laravel API package is
 - `PasskeyLoginButton`
 - `PasskeySection`
 
+## Relying-party helpers
+
+`relyingApplicationsFrom(value)` validates the sibling-application list an identity provider
+reports into one that is safe to render, and `safeApplicationHref(url)` is the scheme check
+behind it. Neither touches the DOM, so an app can feed them a `#app-initial-data` payload, an
+Inertia shared prop, or anything else it already has.
+
+```ts
+import { relyingApplicationsFrom } from 'bwh-auth';
+
+const applications = relyingApplicationsFrom(initialData.applications);
+```
+
+Rendering these entries means putting provider-supplied text into an `href`. `javascript:`
+and `data:` URLs pass a server-side URL-validity check but execute rather than navigate, so
+the scheme is parsed rather than prefix-matched — a `startsWith` test can be walked past with
+leading control characters or unexpected case — and the **parsed** form is returned, so what
+is rendered is exactly what was validated. Unrecognised entries are dropped rather than
+throwing: this is navigation chrome, and one malformed entry must not take down the page it
+appears on.
+
 ## Install
 
 Install the published package from npm:
