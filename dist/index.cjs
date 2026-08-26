@@ -45,7 +45,9 @@ __export(index_exports, {
   getDefaultPasskeyName: () => getDefaultPasskeyName,
   isAbortError: () => isAbortError,
   isConditionalMediationAvailable: () => isConditionalMediationAvailable,
-  registerPasskey: () => registerPasskey
+  registerPasskey: () => registerPasskey,
+  relyingApplicationsFrom: () => relyingApplicationsFrom,
+  safeApplicationHref: () => safeApplicationHref
 });
 module.exports = __toCommonJS(index_exports);
 
@@ -831,6 +833,35 @@ function PasskeySection({ endpoints = {}, components, onSuccess, onError }) {
     ] })
   ] });
 }
+
+// src/relying-applications.ts
+function safeApplicationHref(url) {
+  try {
+    const parsed = new URL(url);
+    return parsed.protocol === "https:" || parsed.protocol === "http:" ? parsed.toString() : null;
+  } catch {
+    return null;
+  }
+}
+function relyingApplicationsFrom(value) {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value.flatMap((entry) => {
+    if (typeof entry !== "object" || entry === null) {
+      return [];
+    }
+    const { key, name, url } = entry;
+    if (typeof key !== "string" || typeof name !== "string" || typeof url !== "string") {
+      return [];
+    }
+    if (key === "" || name.trim() === "") {
+      return [];
+    }
+    const href = safeApplicationHref(url);
+    return href === null ? [] : [{ key, name: name.trim(), url: href }];
+  });
+}
 // Annotate the CommonJS export names for ESM import in node:
 0 && (module.exports = {
   ChangePasswordForm,
@@ -848,5 +879,7 @@ function PasskeySection({ endpoints = {}, components, onSuccess, onError }) {
   getDefaultPasskeyName,
   isAbortError,
   isConditionalMediationAvailable,
-  registerPasskey
+  registerPasskey,
+  relyingApplicationsFrom,
+  safeApplicationHref
 });
