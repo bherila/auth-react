@@ -1,4 +1,3 @@
-import * as react_jsx_runtime from 'react/jsx-runtime';
 import * as React from 'react';
 
 interface AuthEndpointConfig {
@@ -113,12 +112,12 @@ interface TwoFactorFormProps extends AuthFormProps {
     appEnv?: string;
     onReportSuspicious?: (result: AuthJsonResponse) => void;
 }
-declare function LoginForm({ endpoints, components, onSuccess, onError, onTwoFactorRequired, onPasskeySuccess, enablePasskeys, enablePasskeyAutofill, }: LoginFormProps): react_jsx_runtime.JSX.Element;
-declare function SignupForm({ endpoints, components, onSuccess, onError, fields, initialValues, errors, submitMode, title, description, submitLabel, submittingLabel, }: SignupFormProps): react_jsx_runtime.JSX.Element;
-declare function PasswordResetRequestForm({ endpoints, components, onSuccess, onError }: AuthFormProps): react_jsx_runtime.JSX.Element;
-declare function ResetPasswordForm({ endpoints, components, onSuccess, onError, token: initialToken, email: initialEmail }: ResetPasswordFormProps): react_jsx_runtime.JSX.Element;
-declare function ChangePasswordForm({ endpoints, components, onSuccess, onError }: AuthFormProps): react_jsx_runtime.JSX.Element;
-declare function TwoFactorForm({ endpoints, components, attemptToken, appEnv, onSuccess, onError, onReportSuspicious }: TwoFactorFormProps): react_jsx_runtime.JSX.Element;
+declare function LoginForm({ endpoints, components, onSuccess, onError, onTwoFactorRequired, onPasskeySuccess, enablePasskeys, enablePasskeyAutofill, }: LoginFormProps): React.JSX.Element;
+declare function SignupForm({ endpoints, components, onSuccess, onError, fields, initialValues, errors, submitMode, title, description, submitLabel, submittingLabel, }: SignupFormProps): React.JSX.Element;
+declare function PasswordResetRequestForm({ endpoints, components, onSuccess, onError }: AuthFormProps): React.JSX.Element;
+declare function ResetPasswordForm({ endpoints, components, onSuccess, onError, token: initialToken, email: initialEmail }: ResetPasswordFormProps): React.JSX.Element;
+declare function ChangePasswordForm({ endpoints, components, onSuccess, onError }: AuthFormProps): React.JSX.Element;
+declare function TwoFactorForm({ endpoints, components, attemptToken, appEnv, onSuccess, onError, onReportSuspicious }: TwoFactorFormProps): React.JSX.Element;
 
 interface PasskeyLoginButtonProps {
     endpoints?: AuthEndpointConfig;
@@ -127,7 +126,7 @@ interface PasskeyLoginButtonProps {
     onSuccess?: (redirectUrl: string, result: AuthJsonResponse) => void;
     onError?: (message: string) => void;
 }
-declare function PasskeyLoginButton({ endpoints, components, className, onSuccess, onError }: PasskeyLoginButtonProps): react_jsx_runtime.JSX.Element | null;
+declare function PasskeyLoginButton({ endpoints, components, className, onSuccess, onError }: PasskeyLoginButtonProps): React.JSX.Element | null;
 
 interface PasskeySectionProps {
     endpoints?: AuthEndpointConfig;
@@ -135,7 +134,7 @@ interface PasskeySectionProps {
     onSuccess?: (message: string) => void;
     onError?: (field: string, message: string) => void;
 }
-declare function PasskeySection({ endpoints, components, onSuccess, onError }: PasskeySectionProps): react_jsx_runtime.JSX.Element;
+declare function PasskeySection({ endpoints, components, onSuccess, onError }: PasskeySectionProps): React.JSX.Element;
 
 /**
  * The sibling applications an identity provider reports for the signed-in person.
