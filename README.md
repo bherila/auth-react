@@ -169,6 +169,21 @@ import { SignupForm, registerPasskey } from 'bwh-auth'
 />
 ```
 
+Consumers can preserve app-specific login state and design-system checkboxes
+without rebuilding the form:
+
+```tsx
+<LoginForm
+  components={getShadcnComponents()}
+  initialEmail={verifiedEmail}
+  onEmailChange={setForgotPasswordEmail}
+  rememberMeCheckbox={Checkbox}
+  rememberMeLabel="Remember me"
+  rememberMeDataTest="login-remember-me"
+  onSubmitStart={clearLoginMessages}
+/>
+```
+
 The explicit passkey button and conditional autofill both default to the Laravel package routes:
 
 - `POST /api/passkeys/auth/options`

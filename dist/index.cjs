@@ -314,24 +314,50 @@ async function postForm(url, body, csrfToken) {
     },
     body: JSON.stringify(body)
   });
-  const result = await response.json();
+  let decoded;
+  try {
+    decoded = await response.json();
+  } catch {
+    throw new AuthRequestError("The server returned an unexpected response. Please try again.", {});
+  }
+  if (decoded === null || typeof decoded !== "object" || Array.isArray(decoded)) {
+    throw new AuthRequestError("The server returned an unexpected response. Please try again.", {});
+  }
+  const result = decoded;
   if (!response.ok) {
     throw new AuthRequestError(result.message || result.error || "Request failed", result);
   }
   return result;
+}
+function DefaultRememberMeCheckbox({ checked, onCheckedChange, ...props }) {
+  return /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
+    "input",
+    {
+      ...props,
+      type: "checkbox",
+      checked,
+      onChange: (event) => onCheckedChange(event.target.checked)
+    }
+  );
 }
 function LoginForm({
   endpoints = {},
   components,
   onSuccess,
   onError,
+  initialEmail = "",
+  onEmailChange,
+  rememberMeCheckbox: RememberMeCheckbox = DefaultRememberMeCheckbox,
+  rememberMeLabel = "Keep me signed in",
+  rememberMeDataTest,
+  onSubmitStart,
   onTwoFactorRequired,
   onPasskeySuccess,
   enablePasskeys = false,
   enablePasskeyAutofill = enablePasskeys
 }) {
   const { Button, Card, CardContent, CardHeader, CardTitle, Input, Label } = resolveAuthComponents(components);
-  const [email, setEmail] = React2.useState("");
+  const [email, setEmail] = React2.useState(initialEmail);
   const [password, setPassword] = React2.useState("");
   const [remember, setRemember] = React2.useState(false);
   const [loading, setLoading] = React2.useState(false);
@@ -375,6 +401,7 @@ function LoginForm({
   }, [enablePasskeyAutofill, onError, onPasskeySuccess, passkeyEndpoints]);
   async function onSubmit(event) {
     event.preventDefault();
+    onSubmitStart?.();
     setLoading(true);
     try {
       const result = await postForm(endpoints.login ?? "/login", { email, password, remember }, endpoints.csrfToken);
@@ -399,15 +426,37 @@ function LoginForm({
       /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("form", { className: "space-y-4", onSubmit: (event) => void onSubmit(event), children: [
         /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { className: "space-y-1", children: [
           /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(Label, { htmlFor: "login-email", children: "Email" }),
-          /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(Input, { id: "login-email", type: "email", autoComplete: conditionalPasskeyAvailable ? "username webauthn" : "email", required: true, value: email, onChange: (event) => setEmail(event.target.value) })
+          /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
+            Input,
+            {
+              id: "login-email",
+              type: "email",
+              autoComplete: conditionalPasskeyAvailable ? "username webauthn" : "email",
+              required: true,
+              value: email,
+              onChange: (event) => {
+                setEmail(event.target.value);
+                onEmailChange?.(event.target.value);
+              }
+            }
+          )
         ] }),
         /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { className: "space-y-1", children: [
           /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(Label, { htmlFor: "login-password", children: "Password" }),
           /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(Input, { id: "login-password", type: "password", autoComplete: "current-password", required: true, value: password, onChange: (event) => setPassword(event.target.value) })
         ] }),
-        /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("label", { className: "flex items-center gap-2 text-sm", children: [
-          /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("input", { type: "checkbox", checked: remember, onChange: (event) => setRemember(event.target.checked) }),
-          "Keep me signed in"
+        /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { className: "flex items-center gap-2 text-sm", children: [
+          /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
+            RememberMeCheckbox,
+            {
+              id: "login-remember",
+              "aria-labelledby": "login-remember-label",
+              "data-test": rememberMeDataTest,
+              checked: remember,
+              onCheckedChange: setRemember
+            }
+          ),
+          /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(Label, { id: "login-remember-label", htmlFor: "login-remember", children: rememberMeLabel })
         ] }),
         /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(Button, { type: "submit", className: "w-full", disabled: loading, children: loading ? "Signing in..." : "Sign In" })
       ] }),

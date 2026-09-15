@@ -84,9 +84,22 @@ interface AuthFormProps {
     onSuccess?: (result: AuthJsonResponse) => void;
     onError?: (message: string) => void;
 }
+interface LoginRememberMeCheckboxProps {
+    id: string;
+    checked: boolean;
+    onCheckedChange: (checked: boolean) => void;
+    'aria-labelledby'?: string;
+    'data-test'?: string;
+}
 interface LoginFormProps extends AuthFormProps {
     enablePasskeys?: boolean;
     enablePasskeyAutofill?: boolean;
+    initialEmail?: string;
+    onEmailChange?: (email: string) => void;
+    rememberMeCheckbox?: React.ComponentType<LoginRememberMeCheckboxProps>;
+    rememberMeLabel?: React.ReactNode;
+    rememberMeDataTest?: string;
+    onSubmitStart?: () => void;
     onTwoFactorRequired?: (result: AuthJsonResponse & {
         attempt_token?: string;
     }) => void;
@@ -112,7 +125,7 @@ interface TwoFactorFormProps extends AuthFormProps {
     appEnv?: string;
     onReportSuspicious?: (result: AuthJsonResponse) => void;
 }
-declare function LoginForm({ endpoints, components, onSuccess, onError, onTwoFactorRequired, onPasskeySuccess, enablePasskeys, enablePasskeyAutofill, }: LoginFormProps): React.JSX.Element;
+declare function LoginForm({ endpoints, components, onSuccess, onError, initialEmail, onEmailChange, rememberMeCheckbox: RememberMeCheckbox, rememberMeLabel, rememberMeDataTest, onSubmitStart, onTwoFactorRequired, onPasskeySuccess, enablePasskeys, enablePasskeyAutofill, }: LoginFormProps): React.JSX.Element;
 declare function SignupForm({ endpoints, components, onSuccess, onError, fields, initialValues, errors, submitMode, title, description, submitLabel, submittingLabel, }: SignupFormProps): React.JSX.Element;
 declare function PasswordResetRequestForm({ endpoints, components, onSuccess, onError }: AuthFormProps): React.JSX.Element;
 declare function ResetPasswordForm({ endpoints, components, onSuccess, onError, token: initialToken, email: initialEmail }: ResetPasswordFormProps): React.JSX.Element;
@@ -200,4 +213,4 @@ declare function isConditionalMediationAvailable(): Promise<boolean>;
 declare function authenticateWithPasskey({ endpoints, mediation, signal }?: AuthenticateWithPasskeyOptions): Promise<PasskeyAuthenticationResult>;
 declare function registerPasskey({ endpoints, name, signal }?: RegisterPasskeyOptions): Promise<PasskeyRegistrationResult>;
 
-export { type AuthButtonComponent, type AuthButtonComponentInput, type AuthButtonComponentProps, type AuthButtonSize, type AuthButtonVariant, type AuthComponentInput, type AuthComponentOverrides, type AuthComponentSet, type AuthComponentSuperset, type AuthComponents, type AuthContainerComponentProps, type AuthEndpointConfig, type AuthInputComponentProps, type AuthJsonResponse, type AuthLabelComponentProps, type AuthSignupField, type AuthSignupValues, type AuthValidationErrors, ChangePasswordForm, LoginForm, type Passkey, PasskeyLoginButton, PasskeySection, PasswordResetRequestForm, type RelyingApplication, ResetPasswordForm, SignupForm, TwoFactorForm, arrayBufferToBase64url, authenticateWithPasskey, base64urlToArrayBuffer, getCsrfToken, getDefaultPasskeyName, isAbortError, isConditionalMediationAvailable, registerPasskey, relyingApplicationsFrom, safeApplicationHref };
+export { type AuthButtonComponent, type AuthButtonComponentInput, type AuthButtonComponentProps, type AuthButtonSize, type AuthButtonVariant, type AuthComponentInput, type AuthComponentOverrides, type AuthComponentSet, type AuthComponentSuperset, type AuthComponents, type AuthContainerComponentProps, type AuthEndpointConfig, type AuthInputComponentProps, type AuthJsonResponse, type AuthLabelComponentProps, type AuthSignupField, type AuthSignupValues, type AuthValidationErrors, ChangePasswordForm, LoginForm, type LoginFormProps, type LoginRememberMeCheckboxProps, type Passkey, PasskeyLoginButton, PasskeySection, PasswordResetRequestForm, type RelyingApplication, ResetPasswordForm, SignupForm, TwoFactorForm, arrayBufferToBase64url, authenticateWithPasskey, base64urlToArrayBuffer, getCsrfToken, getDefaultPasskeyName, isAbortError, isConditionalMediationAvailable, registerPasskey, relyingApplicationsFrom, safeApplicationHref };
