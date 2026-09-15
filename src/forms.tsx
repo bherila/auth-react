@@ -12,9 +12,23 @@ interface AuthFormProps {
   onError?: (message: string) => void;
 }
 
-interface LoginFormProps extends AuthFormProps {
+export interface LoginRememberMeCheckboxProps {
+  id: string;
+  checked: boolean;
+  onCheckedChange: (checked: boolean) => void;
+  'aria-labelledby'?: string;
+  'data-test'?: string;
+}
+
+export interface LoginFormProps extends AuthFormProps {
   enablePasskeys?: boolean;
   enablePasskeyAutofill?: boolean;
+  initialEmail?: string;
+  onEmailChange?: (email: string) => void;
+  rememberMeCheckbox?: React.ComponentType<LoginRememberMeCheckboxProps>;
+  rememberMeLabel?: React.ReactNode;
+  rememberMeDataTest?: string;
+  onSubmitStart?: () => void;
   onTwoFactorRequired?: (result: AuthJsonResponse & { attempt_token?: string }) => void;
   onPasskeySuccess?: (redirectUrl: string, result: AuthJsonResponse) => void;
 }
@@ -59,7 +73,19 @@ async function postForm(url: string, body: Record<string, unknown>, csrfToken?: 
     },
     body: JSON.stringify(body),
   });
-  const result = await response.json();
+  let decoded: unknown;
+
+  try {
+    decoded = await response.json();
+  } catch {
+    throw new AuthRequestError('The server returned an unexpected response. Please try again.', {});
+  }
+
+  if (decoded === null || typeof decoded !== 'object' || Array.isArray(decoded)) {
+    throw new AuthRequestError('The server returned an unexpected response. Please try again.', {});
+  }
+
+  const result = decoded as AuthJsonResponse;
 
   if (!response.ok) {
     throw new AuthRequestError(result.message || result.error || 'Request failed', result);
@@ -68,18 +94,35 @@ async function postForm(url: string, body: Record<string, unknown>, csrfToken?: 
   return result;
 }
 
+function DefaultRememberMeCheckbox({ checked, onCheckedChange, ...props }: LoginRememberMeCheckboxProps) {
+  return (
+    <input
+      {...props}
+      type="checkbox"
+      checked={checked}
+      onChange={(event) => onCheckedChange(event.target.checked)}
+    />
+  );
+}
+
 export function LoginForm({
   endpoints = {},
   components,
   onSuccess,
   onError,
+  initialEmail = '',
+  onEmailChange,
+  rememberMeCheckbox: RememberMeCheckbox = DefaultRememberMeCheckbox,
+  rememberMeLabel = 'Keep me signed in',
+  rememberMeDataTest,
+  onSubmitStart,
   onTwoFactorRequired,
   onPasskeySuccess,
   enablePasskeys = false,
   enablePasskeyAutofill = enablePasskeys,
 }: LoginFormProps) {
   const { Button, Card, CardContent, CardHeader, CardTitle, Input, Label } = resolveAuthComponents(components);
-  const [email, setEmail] = React.useState('');
+  const [email, setEmail] = React.useState(initialEmail);
   const [password, setPassword] = React.useState('');
   const [remember, setRemember] = React.useState(false);
   const [loading, setLoading] = React.useState(false);
@@ -133,6 +176,7 @@ export function LoginForm({
 
   async function onSubmit(event: React.FormEvent) {
     event.preventDefault();
+    onSubmitStart?.();
     setLoading(true);
 
     try {
@@ -163,16 +207,32 @@ export function LoginForm({
         <form className="space-y-4" onSubmit={(event) => void onSubmit(event)}>
           <div className="space-y-1">
             <Label htmlFor="login-email">Email</Label>
-            <Input id="login-email" type="email" autoComplete={conditionalPasskeyAvailable ? 'username webauthn' : 'email'} required value={email} onChange={(event) => setEmail(event.target.value)} />
+            <Input
+              id="login-email"
+              type="email"
+              autoComplete={conditionalPasskeyAvailable ? 'username webauthn' : 'email'}
+              required
+              value={email}
+              onChange={(event) => {
+                setEmail(event.target.value);
+                onEmailChange?.(event.target.value);
+              }}
+            />
           </div>
           <div className="space-y-1">
             <Label htmlFor="login-password">Password</Label>
             <Input id="login-password" type="password" autoComplete="current-password" required value={password} onChange={(event) => setPassword(event.target.value)} />
           </div>
-          <label className="flex items-center gap-2 text-sm">
-            <input type="checkbox" checked={remember} onChange={(event) => setRemember(event.target.checked)} />
-            Keep me signed in
-          </label>
+          <div className="flex items-center gap-2 text-sm">
+            <RememberMeCheckbox
+              id="login-remember"
+              aria-labelledby="login-remember-label"
+              data-test={rememberMeDataTest}
+              checked={remember}
+              onCheckedChange={setRemember}
+            />
+            <Label id="login-remember-label" htmlFor="login-remember">{rememberMeLabel}</Label>
+          </div>
           <Button type="submit" className="w-full" disabled={loading}>{loading ? 'Signing in...' : 'Sign In'}</Button>
         </form>
         {enablePasskeys ? (
