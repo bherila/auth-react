@@ -136,10 +136,11 @@ interface PasskeyLoginButtonProps {
     endpoints?: AuthEndpointConfig;
     components: AuthButtonComponentInput;
     className?: string;
+    disabled?: boolean;
     onSuccess?: (redirectUrl: string, result: AuthJsonResponse) => void;
     onError?: (message: string) => void;
 }
-declare function PasskeyLoginButton({ endpoints, components, className, onSuccess, onError }: PasskeyLoginButtonProps): React.JSX.Element | null;
+declare function PasskeyLoginButton({ endpoints, components, className, disabled, onSuccess, onError }: PasskeyLoginButtonProps): React.JSX.Element | null;
 
 interface PasskeySectionProps {
     endpoints?: AuthEndpointConfig;

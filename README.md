@@ -169,6 +169,10 @@ import { SignupForm, registerPasskey } from 'bwh-auth'
 />
 ```
 
+Within `LoginForm`, explicit passkey login cancels and waits for conditional autofill before requesting a credential. Password submission and unmount also cancel pending passkey authentication. Autofill pauses after a manual sign-in attempt until the form is remounted. Changing consumer callbacks does not restart autofill.
+
+When `PasskeyLoginButton` receives `onError`, the consumer owns error display; without it, the button displays its own error.
+
 Consumers can preserve app-specific login state and design-system checkboxes
 without rebuilding the form:
 
