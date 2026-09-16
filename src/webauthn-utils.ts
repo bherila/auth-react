@@ -1,3 +1,4 @@
+import { throwIfAborted } from './abort-utils';
 import type { AuthEndpointConfig, AuthJsonResponse } from './types';
 
 export function getCsrfToken(explicitToken?: string): string {
@@ -113,7 +114,7 @@ export async function authenticateWithPasskey({ endpoints = {}, mediation, signa
   }
 
   const options = await optRes.json();
-  signal?.throwIfAborted();
+  throwIfAborted(signal);
   const publicKey: PublicKeyCredentialRequestOptions = {
     ...options,
     challenge: base64urlToArrayBuffer(options.challenge),
@@ -124,7 +125,7 @@ export async function authenticateWithPasskey({ endpoints = {}, mediation, signa
   };
 
   const credential = await navigator.credentials.get({ publicKey, mediation, signal });
-  signal?.throwIfAborted();
+  throwIfAborted(signal);
   if (!credential || credential.type !== 'public-key') {
     throw new Error('No passkey selected');
   }

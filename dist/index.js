@@ -29,6 +29,14 @@ function resolveAuthButtonComponent(components) {
 // src/passkey-authentication.ts
 import * as React from "react";
 
+// src/abort-utils.ts
+function throwIfAborted(signal) {
+  if (!signal?.aborted) return;
+  const error = new Error("Passkey authentication was cancelled");
+  error.name = "AbortError";
+  throw error;
+}
+
 // src/webauthn-utils.ts
 function getCsrfToken(explicitToken) {
   if (explicitToken) {
@@ -98,7 +106,7 @@ async function authenticateWithPasskey({ endpoints = {}, mediation, signal } = {
     throw new Error("Failed to get authentication options");
   }
   const options = await optRes.json();
-  signal?.throwIfAborted();
+  throwIfAborted(signal);
   const publicKey = {
     ...options,
     challenge: base64urlToArrayBuffer(options.challenge),
@@ -108,7 +116,7 @@ async function authenticateWithPasskey({ endpoints = {}, mediation, signal } = {
     }))
   };
   const credential = await navigator.credentials.get({ publicKey, mediation, signal });
-  signal?.throwIfAborted();
+  throwIfAborted(signal);
   if (!credential || credential.type !== "public-key") {
     throw new Error("No passkey selected");
   }
@@ -219,9 +227,9 @@ function usePasskeyAuthentication() {
     previous?.controller.abort();
     const promise = (async () => {
       if (previous) await previous.promise.catch(() => void 0);
-      controller.signal.throwIfAborted();
+      throwIfAborted(controller.signal);
       const result = await authenticateWithPasskey({ ...options, signal: controller.signal });
-      controller.signal.throwIfAborted();
+      throwIfAborted(controller.signal);
       return result;
     })();
     const request = { controller, promise, conditional: options.mediation === "conditional" };

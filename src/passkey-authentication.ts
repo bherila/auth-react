@@ -1,5 +1,6 @@
 import * as React from 'react';
 
+import { throwIfAborted } from './abort-utils';
 import { authenticateWithPasskey } from './webauthn-utils';
 
 type AuthenticationOptions = NonNullable<Parameters<typeof authenticateWithPasskey>[0]>;
@@ -36,9 +37,9 @@ export function usePasskeyAuthentication(): PasskeyAuthentication {
 
     const promise = (async () => {
       if (previous) await previous.promise.catch(() => undefined);
-      controller.signal.throwIfAborted();
+      throwIfAborted(controller.signal);
       const result = await authenticateWithPasskey({ ...options, signal: controller.signal });
-      controller.signal.throwIfAborted();
+      throwIfAborted(controller.signal);
       return result;
     })();
     const request = { controller, promise, conditional: options.mediation === 'conditional' };

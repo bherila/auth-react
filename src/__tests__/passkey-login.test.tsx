@@ -98,6 +98,27 @@ describe('coordinated passkey login', () => {
     expect(onError).not.toHaveBeenCalled();
   });
 
+  it('supports abortable WebAuthn browsers without AbortSignal.throwIfAborted', async () => {
+    const browser = mockBrowser();
+    class LegacyAbortController extends AbortController {
+      constructor() {
+        super();
+        Object.defineProperty(this.signal, 'throwIfAborted', { value: undefined });
+      }
+    }
+    vi.stubGlobal('AbortController', LegacyAbortController);
+    const onSuccess = vi.fn();
+    const onError = vi.fn();
+    render(<LoginForm components={components} enablePasskeys onPasskeySuccess={onSuccess} onError={onError} />);
+    await waitFor(() => expect(browser.get).toHaveBeenCalledOnce());
+    fireEvent.click(screen.getByRole('button', { name: 'Sign in with Passkey' }));
+    await browser.abort(0);
+    await waitFor(() => expect(browser.get).toHaveBeenCalledTimes(2));
+    await browser.succeed(1);
+    await waitFor(() => expect(onSuccess).toHaveBeenCalledOnce());
+    expect(onError).not.toHaveBeenCalled();
+  });
+
   it('keeps autofill pending through email edits and uses the latest consumer callbacks', async () => {
     const browser = mockBrowser();
     const oldSuccess = vi.fn();
