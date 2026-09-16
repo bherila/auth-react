@@ -1,9 +1,10 @@
 import * as React from 'react';
 
 import { resolveAuthComponents } from './components';
+import { PasskeyAuthenticationContext, usePasskeyAuthentication } from './passkey-authentication';
 import { PasskeyLoginButton } from './passkey-login-button';
 import type { AuthComponentInput, AuthEndpointConfig, AuthJsonResponse, AuthSignupField, AuthSignupValues, AuthValidationErrors } from './types';
-import { authenticateWithPasskey, getCsrfToken, isAbortError, isConditionalMediationAvailable } from './webauthn-utils';
+import { getCsrfToken, isAbortError, isConditionalMediationAvailable } from './webauthn-utils';
 
 interface AuthFormProps {
   endpoints?: AuthEndpointConfig;
@@ -127,6 +128,20 @@ export function LoginForm({
   const [remember, setRemember] = React.useState(false);
   const [loading, setLoading] = React.useState(false);
   const [conditionalPasskeyAvailable, setConditionalPasskeyAvailable] = React.useState(false);
+  const passkeyAuthentication = usePasskeyAuthentication();
+  const conditionalInterrupted = React.useRef(false);
+  const submitting = React.useRef(false);
+  const callbacks = React.useRef({ onError, onPasskeySuccess });
+  React.useLayoutEffect(() => {
+    callbacks.current = { onError, onPasskeySuccess };
+  });
+  const coordinatedAuthentication = React.useMemo(() => ({
+    ...passkeyAuthentication,
+    authenticate: (options: Parameters<typeof passkeyAuthentication.authenticate>[0]) => {
+      if (options?.mediation !== 'conditional') conditionalInterrupted.current = true;
+      return passkeyAuthentication.authenticate(options);
+    },
+  }), [passkeyAuthentication]);
   const passkeyEndpoints = React.useMemo(() => ({
     csrfToken: endpoints.csrfToken,
     passkeyAuth: endpoints.passkeyAuth,
@@ -134,34 +149,32 @@ export function LoginForm({
   }), [endpoints.csrfToken, endpoints.passkeyAuth, endpoints.passkeyAuthOptions]);
 
   React.useEffect(() => {
-    if (!enablePasskeyAutofill) return;
-
-    const abortController = new AbortController();
+    setConditionalPasskeyAvailable(false);
+    if (!enablePasskeyAutofill || conditionalInterrupted.current) return;
     let active = true;
 
     async function startConditionalPasskeyLogin() {
       const available = await isConditionalMediationAvailable();
-      if (!available || !active) return;
+      if (!available || !active || conditionalInterrupted.current) return;
 
       setConditionalPasskeyAvailable(true);
 
       try {
-        const { redirectUrl, result } = await authenticateWithPasskey({
+        const { redirectUrl, result } = await coordinatedAuthentication.authenticate({
           endpoints: passkeyEndpoints,
           mediation: 'conditional',
-          signal: abortController.signal,
         });
 
         if (!active) return;
 
-        if (onPasskeySuccess) {
-          onPasskeySuccess(redirectUrl, result);
+        if (callbacks.current.onPasskeySuccess) {
+          callbacks.current.onPasskeySuccess(redirectUrl, result);
         } else {
           window.location.href = redirectUrl;
         }
       } catch (error: unknown) {
         if (!isAbortError(error) && active) {
-          onError?.(error instanceof Error ? error.message : 'Passkey login failed');
+          callbacks.current.onError?.(error instanceof Error ? error.message : 'Passkey login failed');
         }
       }
     }
@@ -170,16 +183,20 @@ export function LoginForm({
 
     return () => {
       active = false;
-      abortController.abort();
+      void coordinatedAuthentication.cancel(true);
     };
-  }, [enablePasskeyAutofill, onError, onPasskeySuccess, passkeyEndpoints]);
+  }, [enablePasskeyAutofill, coordinatedAuthentication, passkeyEndpoints]);
 
   async function onSubmit(event: React.FormEvent) {
     event.preventDefault();
+    if (submitting.current) return;
+    submitting.current = true;
+    conditionalInterrupted.current = true;
     onSubmitStart?.();
     setLoading(true);
 
     try {
+      await passkeyAuthentication.cancel();
       const result = await postForm(endpoints.login ?? '/login', { email, password, remember }, endpoints.csrfToken);
       if (result.requires_2fa) {
         onTwoFactorRequired?.(result);
@@ -194,6 +211,7 @@ export function LoginForm({
     } catch (error: unknown) {
       onError?.(error instanceof Error ? error.message : 'Login failed');
     } finally {
+      submitting.current = false;
       setLoading(false);
     }
   }
@@ -237,18 +255,21 @@ export function LoginForm({
         </form>
         {enablePasskeys ? (
           <div className="mt-4">
-            <PasskeyLoginButton
-              components={{ Button }}
-              endpoints={endpoints}
-              onSuccess={(redirectUrl, result) => {
-                if (onPasskeySuccess) {
-                  onPasskeySuccess(redirectUrl, result);
-                } else {
-                  window.location.href = redirectUrl;
-                }
-              }}
-              onError={onError}
-            />
+            <PasskeyAuthenticationContext.Provider value={coordinatedAuthentication}>
+              <PasskeyLoginButton
+                components={{ Button }}
+                endpoints={endpoints}
+                disabled={loading}
+                onSuccess={(redirectUrl, result) => {
+                  if (onPasskeySuccess) {
+                    onPasskeySuccess(redirectUrl, result);
+                  } else {
+                    window.location.href = redirectUrl;
+                  }
+                }}
+                onError={onError}
+              />
+            </PasskeyAuthenticationContext.Provider>
           </div>
         ) : null}
       </CardContent>

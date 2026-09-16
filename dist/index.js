@@ -1,5 +1,5 @@
 // src/forms.tsx
-import * as React2 from "react";
+import * as React3 from "react";
 
 // src/components.ts
 var requiredComponentKeys = [
@@ -26,8 +26,7 @@ function resolveAuthButtonComponent(components) {
   return { Button: components.Button };
 }
 
-// src/passkey-login-button.tsx
-import { KeyRound } from "lucide-react";
+// src/passkey-authentication.ts
 import * as React from "react";
 
 // src/webauthn-utils.ts
@@ -56,7 +55,7 @@ function arrayBufferToBase64url(buffer) {
   return window.btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=/g, "");
 }
 function isAbortError(error) {
-  return error instanceof Error && error.name === "AbortError";
+  return error !== null && typeof error === "object" && "name" in error && error.name === "AbortError";
 }
 function getDefaultPasskeyName() {
   if (typeof window === "undefined") return "Passkey";
@@ -99,6 +98,7 @@ async function authenticateWithPasskey({ endpoints = {}, mediation, signal } = {
     throw new Error("Failed to get authentication options");
   }
   const options = await optRes.json();
+  signal?.throwIfAborted();
   const publicKey = {
     ...options,
     challenge: base64urlToArrayBuffer(options.challenge),
@@ -108,6 +108,7 @@ async function authenticateWithPasskey({ endpoints = {}, mediation, signal } = {
     }))
   };
   const credential = await navigator.credentials.get({ publicKey, mediation, signal });
+  signal?.throwIfAborted();
   if (!credential || credential.type !== "public-key") {
     throw new Error("No passkey selected");
   }
@@ -202,31 +203,87 @@ async function registerPasskey({ endpoints = {}, name, signal } = {}) {
   return { result };
 }
 
+// src/passkey-authentication.ts
+var PasskeyAuthenticationContext = React.createContext(null);
+function usePasskeyAuthentication() {
+  const pending = React.useRef(null);
+  const cancel = React.useCallback(async (conditionalOnly = false) => {
+    const request = pending.current;
+    if (!request || conditionalOnly && !request.conditional) return;
+    request.controller.abort();
+    await request.promise.catch(() => void 0);
+  }, []);
+  const authenticate = React.useCallback(async (options = {}) => {
+    const previous = pending.current;
+    const controller = new AbortController();
+    previous?.controller.abort();
+    const promise = (async () => {
+      if (previous) await previous.promise.catch(() => void 0);
+      controller.signal.throwIfAborted();
+      const result = await authenticateWithPasskey({ ...options, signal: controller.signal });
+      controller.signal.throwIfAborted();
+      return result;
+    })();
+    const request = { controller, promise, conditional: options.mediation === "conditional" };
+    pending.current = request;
+    try {
+      return await promise;
+    } finally {
+      if (pending.current === request) pending.current = null;
+    }
+  }, []);
+  React.useEffect(() => () => {
+    void cancel();
+  }, [cancel]);
+  return React.useMemo(() => ({ authenticate, cancel }), [authenticate, cancel]);
+}
+
 // src/passkey-login-button.tsx
+import { KeyRound } from "lucide-react";
+import * as React2 from "react";
 import { jsx, jsxs } from "react/jsx-runtime";
-function PasskeyLoginButton({ endpoints = {}, components, className, onSuccess, onError }) {
+function PasskeyLoginButton({ endpoints = {}, components, className, disabled = false, onSuccess, onError }) {
   const { Button } = resolveAuthButtonComponent(components);
-  const [loading, setLoading] = React.useState(false);
-  const [error, setError] = React.useState(null);
+  const [loading, setLoading] = React2.useState(false);
+  const [error, setError] = React2.useState(null);
+  const localAuthentication = usePasskeyAuthentication();
+  const authentication = React2.useContext(PasskeyAuthenticationContext) ?? localAuthentication;
+  const inFlight = React2.useRef(false);
+  const mounted = React2.useRef(true);
+  const callbacks = React2.useRef({ onSuccess, onError });
+  React2.useLayoutEffect(() => {
+    callbacks.current = { onSuccess, onError };
+  });
+  React2.useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+      if (inFlight.current) void authentication.cancel();
+    };
+  }, [authentication]);
   async function handlePasskeyLogin() {
+    if (disabled || inFlight.current) return;
+    inFlight.current = true;
     setError(null);
     setLoading(true);
     try {
-      const { redirectUrl, result } = await authenticateWithPasskey({ endpoints });
-      if (onSuccess) {
-        onSuccess(redirectUrl, result);
+      const { redirectUrl, result } = await authentication.authenticate({ endpoints });
+      if (!mounted.current) return;
+      if (callbacks.current.onSuccess) {
+        callbacks.current.onSuccess(redirectUrl, result);
       } else {
         window.location.href = redirectUrl;
       }
     } catch (caughtError) {
-      if (isAbortError(caughtError)) {
+      if (!mounted.current || isAbortError(caughtError)) {
         return;
       }
       const message = caughtError instanceof Error ? caughtError.message : "Passkey login failed";
-      setError(message);
-      onError?.(message);
+      if (callbacks.current.onError) callbacks.current.onError(message);
+      else setError(message);
     } finally {
-      setLoading(false);
+      inFlight.current = false;
+      if (mounted.current) setLoading(false);
     }
   }
   if (typeof window === "undefined" || !window.PublicKeyCredential) {
@@ -234,7 +291,7 @@ function PasskeyLoginButton({ endpoints = {}, components, className, onSuccess, 
   }
   return /* @__PURE__ */ jsxs("div", { className, children: [
     error ? /* @__PURE__ */ jsx("p", { className: "mb-2 text-sm text-destructive", children: error }) : null,
-    /* @__PURE__ */ jsxs(Button, { type: "button", variant: "outline", className: "w-full", disabled: loading, onClick: handlePasskeyLogin, children: [
+    /* @__PURE__ */ jsxs(Button, { type: "button", variant: "outline", className: "w-full", disabled: disabled || loading, onClick: handlePasskeyLogin, children: [
       /* @__PURE__ */ jsx(KeyRound, { "aria-hidden": "true" }),
       loading ? "Verifying..." : "Sign in with Passkey"
     ] })
@@ -304,53 +361,70 @@ function LoginForm({
   enablePasskeyAutofill = enablePasskeys
 }) {
   const { Button, Card, CardContent, CardHeader, CardTitle, Input, Label } = resolveAuthComponents(components);
-  const [email, setEmail] = React2.useState(initialEmail);
-  const [password, setPassword] = React2.useState("");
-  const [remember, setRemember] = React2.useState(false);
-  const [loading, setLoading] = React2.useState(false);
-  const [conditionalPasskeyAvailable, setConditionalPasskeyAvailable] = React2.useState(false);
-  const passkeyEndpoints = React2.useMemo(() => ({
+  const [email, setEmail] = React3.useState(initialEmail);
+  const [password, setPassword] = React3.useState("");
+  const [remember, setRemember] = React3.useState(false);
+  const [loading, setLoading] = React3.useState(false);
+  const [conditionalPasskeyAvailable, setConditionalPasskeyAvailable] = React3.useState(false);
+  const passkeyAuthentication = usePasskeyAuthentication();
+  const conditionalInterrupted = React3.useRef(false);
+  const submitting = React3.useRef(false);
+  const callbacks = React3.useRef({ onError, onPasskeySuccess });
+  React3.useLayoutEffect(() => {
+    callbacks.current = { onError, onPasskeySuccess };
+  });
+  const coordinatedAuthentication = React3.useMemo(() => ({
+    ...passkeyAuthentication,
+    authenticate: (options) => {
+      if (options?.mediation !== "conditional") conditionalInterrupted.current = true;
+      return passkeyAuthentication.authenticate(options);
+    }
+  }), [passkeyAuthentication]);
+  const passkeyEndpoints = React3.useMemo(() => ({
     csrfToken: endpoints.csrfToken,
     passkeyAuth: endpoints.passkeyAuth,
     passkeyAuthOptions: endpoints.passkeyAuthOptions
   }), [endpoints.csrfToken, endpoints.passkeyAuth, endpoints.passkeyAuthOptions]);
-  React2.useEffect(() => {
-    if (!enablePasskeyAutofill) return;
-    const abortController = new AbortController();
+  React3.useEffect(() => {
+    setConditionalPasskeyAvailable(false);
+    if (!enablePasskeyAutofill || conditionalInterrupted.current) return;
     let active = true;
     async function startConditionalPasskeyLogin() {
       const available = await isConditionalMediationAvailable();
-      if (!available || !active) return;
+      if (!available || !active || conditionalInterrupted.current) return;
       setConditionalPasskeyAvailable(true);
       try {
-        const { redirectUrl, result } = await authenticateWithPasskey({
+        const { redirectUrl, result } = await coordinatedAuthentication.authenticate({
           endpoints: passkeyEndpoints,
-          mediation: "conditional",
-          signal: abortController.signal
+          mediation: "conditional"
         });
         if (!active) return;
-        if (onPasskeySuccess) {
-          onPasskeySuccess(redirectUrl, result);
+        if (callbacks.current.onPasskeySuccess) {
+          callbacks.current.onPasskeySuccess(redirectUrl, result);
         } else {
           window.location.href = redirectUrl;
         }
       } catch (error) {
         if (!isAbortError(error) && active) {
-          onError?.(error instanceof Error ? error.message : "Passkey login failed");
+          callbacks.current.onError?.(error instanceof Error ? error.message : "Passkey login failed");
         }
       }
     }
     void startConditionalPasskeyLogin();
     return () => {
       active = false;
-      abortController.abort();
+      void coordinatedAuthentication.cancel(true);
     };
-  }, [enablePasskeyAutofill, onError, onPasskeySuccess, passkeyEndpoints]);
+  }, [enablePasskeyAutofill, coordinatedAuthentication, passkeyEndpoints]);
   async function onSubmit(event) {
     event.preventDefault();
+    if (submitting.current) return;
+    submitting.current = true;
+    conditionalInterrupted.current = true;
     onSubmitStart?.();
     setLoading(true);
     try {
+      await passkeyAuthentication.cancel();
       const result = await postForm(endpoints.login ?? "/login", { email, password, remember }, endpoints.csrfToken);
       if (result.requires_2fa) {
         onTwoFactorRequired?.(result);
@@ -364,6 +438,7 @@ function LoginForm({
     } catch (error) {
       onError?.(error instanceof Error ? error.message : "Login failed");
     } finally {
+      submitting.current = false;
       setLoading(false);
     }
   }
@@ -407,11 +482,12 @@ function LoginForm({
         ] }),
         /* @__PURE__ */ jsx2(Button, { type: "submit", className: "w-full", disabled: loading, children: loading ? "Signing in..." : "Sign In" })
       ] }),
-      enablePasskeys ? /* @__PURE__ */ jsx2("div", { className: "mt-4", children: /* @__PURE__ */ jsx2(
+      enablePasskeys ? /* @__PURE__ */ jsx2("div", { className: "mt-4", children: /* @__PURE__ */ jsx2(PasskeyAuthenticationContext.Provider, { value: coordinatedAuthentication, children: /* @__PURE__ */ jsx2(
         PasskeyLoginButton,
         {
           components: { Button },
           endpoints,
+          disabled: loading,
           onSuccess: (redirectUrl, result) => {
             if (onPasskeySuccess) {
               onPasskeySuccess(redirectUrl, result);
@@ -421,7 +497,7 @@ function LoginForm({
           },
           onError
         }
-      ) }) : null
+      ) }) }) : null
     ] })
   ] });
 }
@@ -453,11 +529,11 @@ function SignupForm({
   submittingLabel = "Creating account..."
 }) {
   const { Button, Card, CardContent, CardDescription, CardHeader, CardTitle, Input, Label } = resolveAuthComponents(components);
-  const [values, setValues] = React2.useState(() => Object.fromEntries(
+  const [values, setValues] = React3.useState(() => Object.fromEntries(
     fields.map((field) => [field.name, initialSignupValue(field, initialValues)])
   ));
-  const [fieldErrors, setFieldErrors] = React2.useState(errors);
-  const [loading, setLoading] = React2.useState(false);
+  const [fieldErrors, setFieldErrors] = React3.useState(errors);
+  const [loading, setLoading] = React3.useState(false);
   async function onSubmit(event) {
     setLoading(true);
     if (submitMode === "native") {
@@ -544,8 +620,8 @@ function SignupForm({
 }
 function PasswordResetRequestForm({ endpoints = {}, components, onSuccess, onError }) {
   const { Button, Input, Label } = resolveAuthComponents(components);
-  const [email, setEmail] = React2.useState("");
-  const [loading, setLoading] = React2.useState(false);
+  const [email, setEmail] = React3.useState("");
+  const [loading, setLoading] = React3.useState(false);
   async function onSubmit(event) {
     event.preventDefault();
     setLoading(true);
@@ -568,10 +644,10 @@ function PasswordResetRequestForm({ endpoints = {}, components, onSuccess, onErr
 }
 function ResetPasswordForm({ endpoints = {}, components, onSuccess, onError, token: initialToken = "", email: initialEmail = "" }) {
   const { Button, Input, Label } = resolveAuthComponents(components);
-  const [email, setEmail] = React2.useState(initialEmail);
-  const [token, setToken] = React2.useState(initialToken);
-  const [password, setPassword] = React2.useState("");
-  const [passwordConfirmation, setPasswordConfirmation] = React2.useState("");
+  const [email, setEmail] = React3.useState(initialEmail);
+  const [token, setToken] = React3.useState(initialToken);
+  const [password, setPassword] = React3.useState("");
+  const [passwordConfirmation, setPasswordConfirmation] = React3.useState("");
   async function onSubmit(event) {
     event.preventDefault();
     try {
@@ -605,10 +681,10 @@ function ResetPasswordForm({ endpoints = {}, components, onSuccess, onError, tok
 }
 function ChangePasswordForm({ endpoints = {}, components, onSuccess, onError }) {
   const { Button, Input, Label } = resolveAuthComponents(components);
-  const [currentPassword, setCurrentPassword] = React2.useState("");
-  const [password, setPassword] = React2.useState("");
-  const [passwordConfirmation, setPasswordConfirmation] = React2.useState("");
-  const [loading, setLoading] = React2.useState(false);
+  const [currentPassword, setCurrentPassword] = React3.useState("");
+  const [password, setPassword] = React3.useState("");
+  const [passwordConfirmation, setPasswordConfirmation] = React3.useState("");
+  const [loading, setLoading] = React3.useState(false);
   async function onSubmit(event) {
     event.preventDefault();
     setLoading(true);
@@ -651,12 +727,12 @@ function ChangePasswordForm({ endpoints = {}, components, onSuccess, onError }) 
 }
 function TwoFactorForm({ endpoints = {}, components, attemptToken, appEnv, onSuccess, onError, onReportSuspicious }) {
   const { Button, Card, CardContent, CardDescription, CardHeader, CardTitle, Input, Label } = resolveAuthComponents(components);
-  const [currentAttemptToken, setCurrentAttemptToken] = React2.useState(attemptToken);
-  const [code, setCode] = React2.useState("");
-  const [loading, setLoading] = React2.useState(false);
-  const [resending, setResending] = React2.useState(false);
-  const [message, setMessage] = React2.useState("");
-  React2.useEffect(() => setCurrentAttemptToken(attemptToken), [attemptToken]);
+  const [currentAttemptToken, setCurrentAttemptToken] = React3.useState(attemptToken);
+  const [code, setCode] = React3.useState("");
+  const [loading, setLoading] = React3.useState(false);
+  const [resending, setResending] = React3.useState(false);
+  const [message, setMessage] = React3.useState("");
+  React3.useEffect(() => setCurrentAttemptToken(attemptToken), [attemptToken]);
   async function onSubmit(event) {
     event.preventDefault();
     setLoading(true);
@@ -738,20 +814,20 @@ function TwoFactorForm({ endpoints = {}, components, attemptToken, appEnv, onSuc
 
 // src/passkey-section.tsx
 import { Key, Plus, Trash2 } from "lucide-react";
-import * as React3 from "react";
+import * as React4 from "react";
 import { flushSync } from "react-dom";
 import { jsx as jsx3, jsxs as jsxs3 } from "react/jsx-runtime";
 function PasskeySection({ endpoints = {}, components, onSuccess, onError }) {
   const { Button, Card, CardContent, CardDescription, CardHeader, CardTitle, Input, Label } = resolveAuthComponents(components);
-  const [passkeys, setPasskeys] = React3.useState([]);
-  const [loading, setLoading] = React3.useState(true);
-  const [registering, setRegistering] = React3.useState(false);
-  const [pendingName, setPendingName] = React3.useState("");
+  const [passkeys, setPasskeys] = React4.useState([]);
+  const [loading, setLoading] = React4.useState(true);
+  const [registering, setRegistering] = React4.useState(false);
+  const [pendingName, setPendingName] = React4.useState("");
   const listUrl = endpoints.passkeyList ?? "/api/passkeys";
   const registerOptionsUrl = endpoints.passkeyRegisterOptions ?? "/api/passkeys/register/options";
   const registerUrl = endpoints.passkeyRegister ?? "/api/passkeys/register";
   const deleteUrl = endpoints.passkeyDelete ?? ((id) => `/api/passkeys/${id}`);
-  const fetchPasskeys = React3.useCallback(async () => {
+  const fetchPasskeys = React4.useCallback(async () => {
     try {
       const res = await fetch(listUrl);
       if (res.ok) {
@@ -763,7 +839,7 @@ function PasskeySection({ endpoints = {}, components, onSuccess, onError }) {
       setLoading(false);
     }
   }, [listUrl, onError]);
-  React3.useEffect(() => {
+  React4.useEffect(() => {
     void fetchPasskeys();
   }, [fetchPasskeys]);
   async function registerPasskey2() {
