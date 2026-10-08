@@ -156,4 +156,31 @@ describe('ApiCredentialsSection', () => {
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
+
+  it('keeps every undismissed secret when several credentials are created', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi
+        .fn()
+        .mockResolvedValueOnce(json(200, { data: index() }))
+        .mockResolvedValueOnce(json(201, { data: { kind: 'token', name: 'First', token: 'first-secret' } }))
+        .mockResolvedValueOnce(json(200, { data: index() }))
+        .mockResolvedValueOnce(json(201, { data: { kind: 'token', name: 'Second', token: 'second-secret' } }))
+        .mockResolvedValue(json(200, { data: index() })),
+    );
+    render(<ApiCredentialsSection indexUrl="/i" components={components} />);
+
+    for (const name of ['First', 'Second']) {
+      fireEvent.change(await screen.findByLabelText('Token name'), { target: { value: name } });
+      fireEvent.click(screen.getAllByLabelText(/items:read/)[0]);
+      fireEvent.click(screen.getByRole('button', { name: 'Create API token' }));
+      await screen.findByText(`${name.toLowerCase()}-secret`);
+    }
+
+    expect(screen.getByText('first-secret')).toBeTruthy();
+    expect(screen.getByText('second-secret')).toBeTruthy();
+    fireEvent.click(screen.getAllByRole('button', { name: 'Done' })[0]);
+    expect(screen.queryByText('first-secret')).toBeNull();
+    expect(screen.getByText('second-secret')).toBeTruthy();
+  });
 });

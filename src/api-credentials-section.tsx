@@ -71,7 +71,15 @@ export interface ApiCredentialsSectionProps {
 export function ApiCredentialsSection({ indexUrl, components, links = [], csrfToken, onSuccess, onError }: ApiCredentialsSectionProps) {
   const { Card, CardContent, CardDescription, CardHeader, CardTitle } = resolveAuthComponents(components);
   const [index, setIndex] = React.useState<ApiCredentialIndex | null>(null);
-  const [issued, setIssued] = React.useState<IssuedApiCredential | null>(null);
+  // Every secret not yet dismissed. A second creation must never replace a
+  // first secret the person has not copied: it cannot be shown again.
+  const [issued, setIssued] = React.useState<Array<{ key: number; credential: IssuedApiCredential }>>([]);
+  const issuedKey = React.useRef(0);
+  const addIssued = React.useCallback((credential: IssuedApiCredential) => {
+    issuedKey.current += 1;
+    const key = issuedKey.current;
+    setIssued((current) => [...current, { key, credential }]);
+  }, []);
   const [loadError, setLoadError] = React.useState<string | null>(null);
 
   // Callbacks are read through a ref so an inline function from the parent
@@ -119,15 +127,22 @@ export function ApiCredentialsSection({ indexUrl, components, links = [], csrfTo
               ))}
             </dl>
           )}
-          {issued !== null && <IssuedNotice issued={issued} components={components} onDismiss={() => setIssued(null)} />}
+          {issued.map(({ key, credential }) => (
+            <IssuedNotice
+              key={key}
+              issued={credential}
+              components={components}
+              onDismiss={() => setIssued((current) => current.filter((entry) => entry.key !== key))}
+            />
+          ))}
           {loadError !== null && <p role="alert">{loadError}</p>}
           {index !== null && (
             <>
               {(index.issue_token_href === null || index.register_app_href === null) && (
                 <p role="status">Creating new credentials is unavailable right now. You can still revoke existing ones.</p>
               )}
-              <TokenSection index={index} {...shared} onIssued={setIssued} reload={reload} />
-              <AppSection index={index} {...shared} onIssued={setIssued} reload={reload} />
+              <TokenSection index={index} {...shared} onIssued={addIssued} reload={reload} />
+              <AppSection index={index} {...shared} onIssued={addIssued} reload={reload} />
             </>
           )}
         </div>
