@@ -22,6 +22,7 @@ The companion Laravel API package is
 - `TwoFactorForm`
 - `PasskeyLoginButton`
 - `PasskeySection`
+- `ApiCredentialsSection`
 
 ## Relying-party helpers
 
@@ -205,6 +206,31 @@ The explicit passkey button and conditional autofill both default to the Laravel
   onError={setError}
 />
 ```
+
+## API credentials
+
+`ApiCredentialsSection` lets a signed-in person create credentials for apps that use the API:
+- **API tokens**, for connectors that ask for a key;
+- **OAuth apps**, for connectors that run the authorization-code flow.
+
+It talks to the auth package's credential service (`oauth_server.credentials`) through its JSON index URL. The server sends every action URL, so the component assembles none.
+
+```tsx
+<ApiCredentialsSection
+  indexUrl="/account/api-credentials"
+  components={components}
+  links={[
+    { label: 'OpenAPI document', url: openApiUrl },
+    { label: 'OAuth authorize URL', url: authorizeUrl },
+    { label: 'OAuth token URL', url: tokenUrl },
+  ]}
+/>
+```
+
+- **Each new secret is shown once.** It comes from the creation response and is kept only in component memory. Afterwards only the lists are reloaded, so it never enters page props or history.
+- **Requests** send the session cookie and `X-CSRF-TOKEN`. A 401 or 419 response becomes "sign in again".
+- **While the server reports issuing unavailable** (OAuth switched off), the create forms are hidden, and revoke and delete still work.
+- **Token lifetimes** are ISO-8601 durations from the server, displayed as text (`PT4H` shows as "4 hours").
 
 ## Endpoint Defaults
 
