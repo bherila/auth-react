@@ -1,6 +1,6 @@
 {
   "name": "bwh-auth",
-  "version": "0.3.3",
+  "version": "0.4.0",
   "description": "Shared React auth UI and browser WebAuthn helpers for BWH applications.",
   "license": "MIT",
   "type": "module",
