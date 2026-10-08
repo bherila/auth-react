@@ -87,8 +87,18 @@ export function ApiCredentialsSection({ indexUrl, components, links = [], csrfTo
   const onErrorRef = React.useRef(onError);
   onErrorRef.current = onError;
 
+  // Only the newest request may update the view: after an account or tenant
+  // switch, an older response must not bring back another context's
+  // credentials (and their action URLs).
+  const generation = React.useRef(0);
+
   const reload = React.useCallback(async () => {
+    generation.current += 1;
+    const mine = generation.current;
     const result = await credentialRequest<ApiCredentialIndex>('GET', indexUrl, undefined, csrfToken);
+    if (mine !== generation.current) {
+      return;
+    }
     if (result.ok) {
       setIndex(result.data);
       setLoadError(null);
@@ -99,6 +109,7 @@ export function ApiCredentialsSection({ indexUrl, components, links = [], csrfTo
   }, [indexUrl, csrfToken]);
 
   React.useEffect(() => {
+    setIndex(null);
     void reload();
   }, [reload]);
 

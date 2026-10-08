@@ -221,4 +221,27 @@ describe('ApiCredentialsSection', () => {
 
     expect(fetchMock.mock.calls.filter(([, init]) => (init as RequestInit | undefined)?.method === 'DELETE')).toHaveLength(1);
   });
+
+  it('ignores a slower response for an index URL that is no longer shown', async () => {
+    let finishOld: (response: Response) => void = () => undefined;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((url: string) =>
+        url === '/old'
+          ? new Promise<Response>((resolve) => (finishOld = resolve))
+          : Promise.resolve(
+              json(200, { data: index({ tokens: [{ id: 'n', name: 'New context', scopes: [], created_at: null, expires_at: null, revoke_href: '/new/n' }] }) }),
+            ),
+      ),
+    );
+    const { rerender } = render(<ApiCredentialsSection indexUrl="/old" components={components} />);
+    rerender(<ApiCredentialsSection indexUrl="/new" components={components} />);
+    await screen.findByText('New context');
+
+    finishOld(json(200, { data: index({ tokens: [{ id: 'o', name: 'Old context', scopes: [], created_at: null, expires_at: null, revoke_href: '/old/o' }] }) }));
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    expect(screen.queryByText('Old context')).toBeNull();
+    expect(screen.getByText('New context')).toBeTruthy();
+  });
 });
