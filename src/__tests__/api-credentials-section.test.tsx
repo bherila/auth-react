@@ -275,4 +275,32 @@ describe('ApiCredentialsSection', () => {
 
     await waitFor(() => expect(screen.queryByText('Gone soon')).toBeNull());
   });
+
+  it('reloads the current context, not the one an earlier action started in', async () => {
+    let finishDelete: (response: Response) => void = () => undefined;
+    const urls: string[] = [];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((url: string, init?: RequestInit) => {
+        urls.push(`${init?.method ?? 'GET'} ${url}`);
+        if (init?.method === 'DELETE') {
+          return new Promise<Response>((resolve) => (finishDelete = resolve));
+        }
+
+        return Promise.resolve(
+          json(200, { data: index({ tokens: [{ id: url, name: `List for ${url}`, scopes: [], created_at: null, expires_at: null, revoke_href: `${url}/t` }] }) }),
+        );
+      }),
+    );
+    const { rerender } = render(<ApiCredentialsSection indexUrl="/old" components={components} />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Revoke' }));
+    rerender(<ApiCredentialsSection indexUrl="/new" components={components} />);
+    await screen.findByText('List for /new');
+
+    finishDelete(json(200, { data: { revoked: true } }));
+    await waitFor(() => expect(urls.filter((entry) => entry.startsWith('GET')).length).toBeGreaterThanOrEqual(3));
+
+    expect(urls.filter((entry) => entry === 'GET /old')).toHaveLength(1);
+    expect(screen.queryByText('List for /old')).toBeNull();
+  });
 });

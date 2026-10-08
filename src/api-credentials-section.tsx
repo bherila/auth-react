@@ -92,10 +92,17 @@ export function ApiCredentialsSection({ indexUrl, components, links = [], csrfTo
   // credentials (and their action URLs).
   const generation = React.useRef(0);
 
+  // Reloads always target the context shown now: an action that started
+  // under a previous account and finishes later must not fetch (and display)
+  // that account's index again.
+  const context = React.useRef({ indexUrl, csrfToken });
+  context.current = { indexUrl, csrfToken };
+
   const reload = React.useCallback(async () => {
     generation.current += 1;
     const mine = generation.current;
-    const result = await credentialRequest<ApiCredentialIndex>('GET', indexUrl, undefined, csrfToken);
+    const { indexUrl: url, csrfToken: token } = context.current;
+    const result = await credentialRequest<ApiCredentialIndex>('GET', url, undefined, token);
     if (mine !== generation.current) {
       return;
     }
@@ -106,12 +113,12 @@ export function ApiCredentialsSection({ indexUrl, components, links = [], csrfTo
       setLoadError(result.message);
       onErrorRef.current?.('api-credentials', result.message);
     }
-  }, [indexUrl, csrfToken]);
+  }, []);
 
   React.useEffect(() => {
     setIndex(null);
     void reload();
-  }, [reload]);
+  }, [indexUrl, csrfToken, reload]);
 
   // A credential whose DELETE succeeded leaves the view at once, even if the
   // refresh that follows fails - it must never look still live.

@@ -960,10 +960,13 @@ function ApiCredentialsSection({ indexUrl, components, links = [], csrfToken, on
   const onErrorRef = React5.useRef(onError);
   onErrorRef.current = onError;
   const generation = React5.useRef(0);
+  const context = React5.useRef({ indexUrl, csrfToken });
+  context.current = { indexUrl, csrfToken };
   const reload = React5.useCallback(async () => {
     generation.current += 1;
     const mine = generation.current;
-    const result = await credentialRequest("GET", indexUrl, void 0, csrfToken);
+    const { indexUrl: url, csrfToken: token } = context.current;
+    const result = await credentialRequest("GET", url, void 0, token);
     if (mine !== generation.current) {
       return;
     }
@@ -974,11 +977,11 @@ function ApiCredentialsSection({ indexUrl, components, links = [], csrfToken, on
       setLoadError(result.message);
       onErrorRef.current?.("api-credentials", result.message);
     }
-  }, [indexUrl, csrfToken]);
+  }, []);
   React5.useEffect(() => {
     setIndex(null);
     void reload();
-  }, [reload]);
+  }, [indexUrl, csrfToken, reload]);
   const removeLocally = React5.useCallback((list, id) => {
     setIndex(
       (current) => current === null ? current : list === "tokens" ? { ...current, tokens: current.tokens.filter((token) => token.id !== id) } : { ...current, apps: current.apps.filter((app) => app.id !== id) }
