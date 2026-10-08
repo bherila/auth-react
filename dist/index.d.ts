@@ -214,4 +214,73 @@ declare function isConditionalMediationAvailable(): Promise<boolean>;
 declare function authenticateWithPasskey({ endpoints, mediation, signal }?: AuthenticateWithPasskeyOptions): Promise<PasskeyAuthenticationResult>;
 declare function registerPasskey({ endpoints, name, signal }?: RegisterPasskeyOptions): Promise<PasskeyRegistrationResult>;
 
-export { type AuthButtonComponent, type AuthButtonComponentInput, type AuthButtonComponentProps, type AuthButtonSize, type AuthButtonVariant, type AuthComponentInput, type AuthComponentOverrides, type AuthComponentSet, type AuthComponentSuperset, type AuthComponents, type AuthContainerComponentProps, type AuthEndpointConfig, type AuthInputComponentProps, type AuthJsonResponse, type AuthLabelComponentProps, type AuthSignupField, type AuthSignupValues, type AuthValidationErrors, ChangePasswordForm, LoginForm, type LoginFormProps, type LoginRememberMeCheckboxProps, type Passkey, PasskeyLoginButton, PasskeySection, PasswordResetRequestForm, type RelyingApplication, ResetPasswordForm, SignupForm, TwoFactorForm, arrayBufferToBase64url, authenticateWithPasskey, base64urlToArrayBuffer, getCsrfToken, getDefaultPasskeyName, isAbortError, isConditionalMediationAvailable, registerPasskey, relyingApplicationsFrom, safeApplicationHref };
+interface ApiCredentialScope {
+    id: string;
+    description: string;
+}
+interface ApiCredentialToken {
+    id: string;
+    name: string;
+    scopes: string[];
+    created_at: string | null;
+    expires_at: string | null;
+    revoke_href: string;
+}
+interface ApiCredentialApp {
+    id: string;
+    name: string;
+    confidential: boolean;
+    redirect_uris: string[];
+    scopes: string[];
+    created_at: string | null;
+    delete_href: string;
+}
+/** The server's index response (`data`): every URL is finished; this component assembles none. */
+interface ApiCredentialIndex {
+    scopes: ApiCredentialScope[];
+    token_lifetimes: string[];
+    /** Null while issuing is unavailable (the OAuth server is switched off). Revocation stays available. */
+    issue_token_href: string | null;
+    register_app_href: string | null;
+    tokens: ApiCredentialToken[];
+    apps: ApiCredentialApp[];
+}
+type IssuedApiCredential = {
+    kind: 'token';
+    name: string;
+    token: string;
+    expires_at?: string;
+} | {
+    kind: 'app';
+    name: string;
+    client_id: string;
+    client_secret: string | null;
+};
+interface ApiCredentialEndpointLink {
+    label: string;
+    url: string;
+}
+interface ApiCredentialsSectionProps {
+    /** The credential service's index URL (GET). */
+    indexUrl: string;
+    components: AuthComponentInput;
+    /** Values a connector needs: the OpenAPI document, API base, OAuth authorize/token URLs, MCP URL. */
+    links?: ApiCredentialEndpointLink[];
+    csrfToken?: string;
+    onSuccess?: (message: string) => void;
+    onError?: (field: string, message: string) => void;
+}
+/**
+ * A person's credentials for apps that use the API: personal API tokens (for
+ * connectors that ask for a key) and OAuth apps (for connectors that run the
+ * authorization-code flow).
+ *
+ * Each secret arrives once, in the response that created it, and lives only
+ * in this component's memory; afterwards only the lists are reloaded, so it is
+ * never part of page props or browser history.
+ */
+declare function ApiCredentialsSection({ indexUrl, components, links, csrfToken, onSuccess, onError }: ApiCredentialsSectionProps): React.JSX.Element;
+/** PT4H → "4 hours", P30D → "30 days", P1Y → "1 year". Unknown shapes are shown as given. */
+declare function describeDuration(spec: string): string;
+
+export { type ApiCredentialApp, type ApiCredentialEndpointLink, type ApiCredentialIndex, type ApiCredentialScope, type ApiCredentialToken, ApiCredentialsSection, type ApiCredentialsSectionProps, type AuthButtonComponent, type AuthButtonComponentInput, type AuthButtonComponentProps, type AuthButtonSize, type AuthButtonVariant, type AuthComponentInput, type AuthComponentOverrides, type AuthComponentSet, type AuthComponentSuperset, type AuthComponents, type AuthContainerComponentProps, type AuthEndpointConfig, type AuthInputComponentProps, type AuthJsonResponse, type AuthLabelComponentProps, type AuthSignupField, type AuthSignupValues, type AuthValidationErrors, ChangePasswordForm, type IssuedApiCredential, LoginForm, type LoginFormProps, type LoginRememberMeCheckboxProps, type Passkey, PasskeyLoginButton, PasskeySection, PasswordResetRequestForm, type RelyingApplication, ResetPasswordForm, SignupForm, TwoFactorForm, arrayBufferToBase64url, authenticateWithPasskey, base64urlToArrayBuffer, describeDuration, getCsrfToken, getDefaultPasskeyName, isAbortError, isConditionalMediationAvailable, registerPasskey, relyingApplicationsFrom, safeApplicationHref };

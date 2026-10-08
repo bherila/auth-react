@@ -30,6 +30,7 @@ var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: tru
 // src/index.ts
 var index_exports = {};
 __export(index_exports, {
+  ApiCredentialsSection: () => ApiCredentialsSection,
   ChangePasswordForm: () => ChangePasswordForm,
   LoginForm: () => LoginForm,
   PasskeyLoginButton: () => PasskeyLoginButton,
@@ -41,6 +42,7 @@ __export(index_exports, {
   arrayBufferToBase64url: () => arrayBufferToBase64url,
   authenticateWithPasskey: () => authenticateWithPasskey,
   base64urlToArrayBuffer: () => base64urlToArrayBuffer,
+  describeDuration: () => describeDuration,
   getCsrfToken: () => getCsrfToken,
   getDefaultPasskeyName: () => getDefaultPasskeyName,
   isAbortError: () => isAbortError,
@@ -995,8 +997,398 @@ function relyingApplicationsFrom(value) {
     return href === null ? [] : [{ key, name: name.trim(), url: href }];
   });
 }
+
+// src/api-credentials-section.tsx
+var React5 = __toESM(require("react"), 1);
+var import_jsx_runtime4 = require("react/jsx-runtime");
+function ApiCredentialsSection({ indexUrl, components, links = [], csrfToken, onSuccess, onError }) {
+  const { Card, CardContent, CardDescription, CardHeader, CardTitle } = resolveAuthComponents(components);
+  const [index, setIndex] = React5.useState(null);
+  const [issued, setIssued] = React5.useState([]);
+  const issuedKey = React5.useRef(0);
+  const addIssued = React5.useCallback((credential) => {
+    issuedKey.current += 1;
+    const key = issuedKey.current;
+    setIssued((current) => [...current, { key, credential }]);
+  }, []);
+  const [loadError, setLoadError] = React5.useState(null);
+  const onErrorRef = React5.useRef(onError);
+  onErrorRef.current = onError;
+  const generation = React5.useRef(0);
+  const context = React5.useRef({ indexUrl, csrfToken });
+  context.current = { indexUrl, csrfToken };
+  const reload = React5.useCallback(async () => {
+    generation.current += 1;
+    const mine = generation.current;
+    const { indexUrl: url, csrfToken: token } = context.current;
+    const result = await credentialRequest("GET", url, void 0, token);
+    if (mine !== generation.current) {
+      return;
+    }
+    if (result.ok) {
+      setIndex(result.data);
+      setLoadError(null);
+    } else {
+      setLoadError(result.message);
+      onErrorRef.current?.("api-credentials", result.message);
+    }
+  }, []);
+  React5.useEffect(() => {
+    setIndex(null);
+    void reload();
+  }, [indexUrl, csrfToken, reload]);
+  const removeLocally = React5.useCallback((list, id) => {
+    setIndex(
+      (current) => current === null ? current : list === "tokens" ? { ...current, tokens: current.tokens.filter((token) => token.id !== id) } : { ...current, apps: current.apps.filter((app) => app.id !== id) }
+    );
+  }, []);
+  const shared = { components, csrfToken, onError, onSuccess, removeLocally };
+  return /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)(Card, { children: [
+    /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)(CardHeader, { children: [
+      /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(CardTitle, { children: "API access" }),
+      /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(CardDescription, { children: "Connect apps that use the API. Register an OAuth app for apps that sign you in, or create an API token for apps that ask for a key. Each carries only the permissions you choose, and never more than your own access." })
+    ] }),
+    /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(CardContent, { children: /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("div", { style: { display: "grid", gap: "1.5rem", minWidth: 0 }, children: [
+      links.length > 0 && /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("dl", { style: { display: "grid", gap: "0.5rem", minWidth: 0 }, children: links.map((link) => /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("div", { style: { minWidth: 0 }, children: [
+        /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("dt", { children: link.label }),
+        /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("dd", { style: { margin: 0, overflowWrap: "anywhere" }, children: [
+          /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("code", { children: link.url }),
+          " ",
+          /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(CopyButton, { text: link.url, label: link.label, components })
+        ] })
+      ] }, link.label)) }),
+      issued.map(({ key, credential }) => /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(
+        IssuedNotice,
+        {
+          issued: credential,
+          components,
+          onDismiss: () => setIssued((current) => current.filter((entry) => entry.key !== key))
+        },
+        key
+      )),
+      loadError !== null && /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("p", { role: "alert", children: loadError }),
+      index !== null && /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)(import_jsx_runtime4.Fragment, { children: [
+        (index.issue_token_href === null || index.register_app_href === null) && /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("p", { role: "status", children: "Creating new credentials is unavailable right now. You can still revoke existing ones." }),
+        /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(TokenSection, { index, ...shared, onIssued: addIssued, reload }),
+        /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(AppSection, { index, ...shared, onIssued: addIssued, reload })
+      ] })
+    ] }) })
+  ] });
+}
+function TokenSection({ index, components, csrfToken, onIssued, reload, onSuccess, onError, removeLocally }) {
+  const { Button, Input, Label } = resolveAuthComponents(components);
+  const [name, setName] = React5.useState("");
+  const [scopes, setScopes] = React5.useState([]);
+  const [lifetime, setLifetime] = React5.useState(index.token_lifetimes[0] ?? "");
+  const [busy, setBusy] = React5.useState(false);
+  const [error, setError] = React5.useState(null);
+  async function create(event) {
+    event.preventDefault();
+    if (index.issue_token_href === null) {
+      return;
+    }
+    setBusy(true);
+    const result = await credentialRequest("POST", index.issue_token_href, { name, scopes, lifetime }, csrfToken);
+    setBusy(false);
+    if (!result.ok) {
+      setError(result.message);
+      onError?.("api-tokens", result.message);
+      return;
+    }
+    setError(null);
+    setName("");
+    setScopes([]);
+    onIssued(result.data);
+    onSuccess?.("API token created.");
+    await reload();
+  }
+  const [pending, setPending] = React5.useState([]);
+  async function revoke(token) {
+    if (pending.includes(token.id)) {
+      return;
+    }
+    setPending((current) => [...current, token.id]);
+    const result = await credentialRequest("DELETE", token.revoke_href, void 0, csrfToken);
+    if (!result.ok) {
+      setPending((current) => current.filter((id) => id !== token.id));
+      setError(result.message);
+      onError?.("api-tokens", result.message);
+      return;
+    }
+    setError(null);
+    removeLocally("tokens", token.id);
+    onSuccess?.("API token revoked.");
+    await reload();
+    setPending((current) => current.filter((id) => id !== token.id));
+  }
+  return /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("section", { style: { display: "grid", gap: "0.75rem", minWidth: 0 }, children: [
+    /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("h3", { children: "API tokens" }),
+    index.issue_token_href !== null && /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("form", { onSubmit: create, style: { display: "grid", gap: "0.75rem" }, children: [
+      /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("div", { style: { display: "grid", gap: "0.25rem" }, children: [
+        /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(Label, { htmlFor: "api-token-name", children: "Token name" }),
+        /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(Input, { id: "api-token-name", value: name, maxLength: 120, onChange: (event) => setName(event.target.value) })
+      ] }),
+      /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(ScopePicker, { idPrefix: "api-token-scope", scopes: index.scopes, selected: scopes, onChange: setScopes }),
+      /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("fieldset", { style: { display: "grid", gap: "0.25rem", border: 0, padding: 0 }, children: [
+        /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("legend", { children: "Expires after" }),
+        index.token_lifetimes.map((spec) => /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("label", { children: [
+          /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("input", { type: "radio", name: "api-token-lifetime", checked: lifetime === spec, onChange: () => setLifetime(spec) }),
+          " ",
+          describeDuration(spec)
+        ] }, spec))
+      ] }),
+      /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("div", { children: /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(Button, { type: "submit", disabled: busy || name.trim() === "" || scopes.length === 0 || lifetime === "", children: "Create API token" }) })
+    ] }),
+    error !== null && /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("p", { role: "alert", children: error }),
+    /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("ul", { style: { display: "grid", gap: "0.5rem", listStyle: "none", padding: 0, margin: 0, minWidth: 0 }, children: index.tokens.map((token) => /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("li", { style: { minWidth: 0, overflowWrap: "anywhere" }, children: [
+      /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("strong", { children: token.name }),
+      " \xB7 ",
+      token.scopes.join(", "),
+      token.expires_at !== null && /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)(import_jsx_runtime4.Fragment, { children: [
+        " \xB7 expires ",
+        new Date(token.expires_at).toLocaleString()
+      ] }),
+      " ",
+      /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(Button, { type: "button", disabled: pending.includes(token.id), onClick: () => void revoke(token), children: "Revoke" })
+    ] }, token.id)) })
+  ] });
+}
+function AppSection({ index, components, csrfToken, onIssued, reload, onSuccess, onError, removeLocally }) {
+  const { Button, Input, Label } = resolveAuthComponents(components);
+  const [name, setName] = React5.useState("");
+  const [redirects, setRedirects] = React5.useState("");
+  const [confidential, setConfidential] = React5.useState(true);
+  const [scopes, setScopes] = React5.useState([]);
+  const [busy, setBusy] = React5.useState(false);
+  const [error, setError] = React5.useState(null);
+  const redirectUris = redirects.split("\n").map((line) => line.trim()).filter((line) => line !== "");
+  async function register(event) {
+    event.preventDefault();
+    if (index.register_app_href === null) {
+      return;
+    }
+    setBusy(true);
+    const result = await credentialRequest(
+      "POST",
+      index.register_app_href,
+      { name, redirect_uris: redirectUris, confidential, scopes },
+      csrfToken
+    );
+    setBusy(false);
+    if (!result.ok) {
+      setError(result.message);
+      onError?.("oauth-apps", result.message);
+      return;
+    }
+    setError(null);
+    setName("");
+    setRedirects("");
+    setScopes([]);
+    onIssued(result.data);
+    onSuccess?.("OAuth app registered.");
+    await reload();
+  }
+  const [pending, setPending] = React5.useState([]);
+  async function remove(app) {
+    if (pending.includes(app.id)) {
+      return;
+    }
+    setPending((current) => [...current, app.id]);
+    const result = await credentialRequest("DELETE", app.delete_href, void 0, csrfToken);
+    if (!result.ok) {
+      setPending((current) => current.filter((id) => id !== app.id));
+      setError(result.message);
+      onError?.("oauth-apps", result.message);
+      return;
+    }
+    setError(null);
+    removeLocally("apps", app.id);
+    onSuccess?.("OAuth app deleted and its tokens revoked.");
+    await reload();
+    setPending((current) => current.filter((id) => id !== app.id));
+  }
+  return /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("section", { style: { display: "grid", gap: "0.75rem", minWidth: 0 }, children: [
+    /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("h3", { children: "OAuth apps" }),
+    index.register_app_href !== null && /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("form", { onSubmit: register, style: { display: "grid", gap: "0.75rem" }, children: [
+      /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("div", { style: { display: "grid", gap: "0.25rem" }, children: [
+        /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(Label, { htmlFor: "oauth-app-name", children: "App name" }),
+        /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(Input, { id: "oauth-app-name", value: name, maxLength: 120, onChange: (event) => setName(event.target.value) })
+      ] }),
+      /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("div", { style: { display: "grid", gap: "0.25rem" }, children: [
+        /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(Label, { htmlFor: "oauth-app-redirects", children: "Redirect URIs (one per line)" }),
+        /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("textarea", { id: "oauth-app-redirects", rows: 3, value: redirects, onChange: (event) => setRedirects(event.target.value) })
+      ] }),
+      /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("fieldset", { style: { display: "grid", gap: "0.25rem", border: 0, padding: 0 }, children: [
+        /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("legend", { children: "Client type" }),
+        /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("label", { children: [
+          /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("input", { type: "radio", name: "oauth-app-type", checked: confidential, onChange: () => setConfidential(true) }),
+          " Confidential: the app keeps a client secret on its server"
+        ] }),
+        /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("label", { children: [
+          /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("input", { type: "radio", name: "oauth-app-type", checked: !confidential, onChange: () => setConfidential(false) }),
+          " Public: no secret, PKCE only"
+        ] })
+      ] }),
+      /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(ScopePicker, { idPrefix: "oauth-app-scope", scopes: index.scopes, selected: scopes, onChange: setScopes }),
+      /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("div", { children: /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(Button, { type: "submit", disabled: busy || name.trim() === "" || redirectUris.length === 0 || scopes.length === 0, children: "Register OAuth app" }) })
+    ] }),
+    error !== null && /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("p", { role: "alert", children: error }),
+    /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("ul", { style: { display: "grid", gap: "0.5rem", listStyle: "none", padding: 0, margin: 0, minWidth: 0 }, children: index.apps.map((app) => /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("li", { style: { minWidth: 0, overflowWrap: "anywhere" }, children: [
+      /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("strong", { children: app.name }),
+      " \xB7 client ID ",
+      /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("code", { children: app.id }),
+      " \xB7 ",
+      app.confidential ? "confidential" : "public",
+      /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("br", {}),
+      app.redirect_uris.join(", "),
+      /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("br", {}),
+      "May request: ",
+      app.scopes.join(", "),
+      " ",
+      /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(Button, { type: "button", disabled: pending.includes(app.id), onClick: () => void remove(app), children: "Delete" })
+    ] }, app.id)) })
+  ] });
+}
+function ScopePicker({
+  idPrefix,
+  scopes,
+  selected,
+  onChange
+}) {
+  return /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("fieldset", { style: { display: "grid", gap: "0.25rem", border: 0, padding: 0, minWidth: 0 }, children: [
+    /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("legend", { children: "Permissions" }),
+    scopes.map((scope) => {
+      const id = `${idPrefix}-${scope.id}`;
+      return /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("label", { htmlFor: id, style: { overflowWrap: "anywhere" }, children: [
+        /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(
+          "input",
+          {
+            id,
+            type: "checkbox",
+            checked: selected.includes(scope.id),
+            onChange: (event) => onChange(event.target.checked ? [...selected, scope.id] : selected.filter((value) => value !== scope.id))
+          }
+        ),
+        " ",
+        /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("code", { children: scope.id }),
+        " ",
+        scope.description
+      ] }, scope.id);
+    })
+  ] });
+}
+function IssuedNotice({
+  issued,
+  components,
+  onDismiss
+}) {
+  const { Button } = resolveAuthComponents(components);
+  const values = issued.kind === "token" ? [{ label: "API token", url: issued.token }] : [
+    { label: "Client ID", url: issued.client_id },
+    ...issued.client_secret !== null ? [{ label: "Client secret", url: issued.client_secret }] : []
+  ];
+  return /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("div", { role: "status", style: { display: "grid", gap: "0.5rem", minWidth: 0 }, children: [
+    /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("p", { style: { overflowWrap: "anywhere" }, children: [
+      issued.kind === "token" ? `API token \u201C${issued.name}\u201D created.` : `OAuth app \u201C${issued.name}\u201D registered.`,
+      " Copy it now: it will not be shown again."
+    ] }),
+    values.map((value) => /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("div", { style: { minWidth: 0, overflowWrap: "anywhere" }, children: [
+      value.label,
+      ": ",
+      /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("code", { children: value.url }),
+      " ",
+      /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(CopyButton, { text: value.url, label: value.label, components })
+    ] }, value.label)),
+    /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("div", { children: /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(Button, { type: "button", onClick: onDismiss, children: "Done" }) })
+  ] });
+}
+function CopyButton({ text, label, components }) {
+  const { Button } = resolveAuthComponents(components);
+  const [state, setState] = React5.useState("idle");
+  return /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)(import_jsx_runtime4.Fragment, { children: [
+    /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(
+      Button,
+      {
+        type: "button",
+        "aria-label": `Copy ${label}`,
+        onClick: async () => {
+          if (typeof navigator === "undefined" || typeof navigator.clipboard?.writeText !== "function") {
+            setState("failed");
+            return;
+          }
+          try {
+            await navigator.clipboard.writeText(text);
+            setState("copied");
+          } catch {
+            setState("failed");
+          }
+        },
+        children: state === "copied" ? "Copied" : "Copy"
+      }
+    ),
+    state === "failed" && /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("span", { role: "status", children: " Copying is unavailable here; select the text and copy it manually." })
+  ] });
+}
+function describeDuration(spec) {
+  const match = /^P(?:(\d+)Y)?(?:(\d+)M)?(?:(\d+)W)?(?:(\d+)D)?(?:T(?:(\d+)H)?(?:(\d+)M)?)?$/.exec(spec);
+  if (!match) {
+    return spec;
+  }
+  const units = ["year", "month", "week", "day", "hour", "minute"];
+  const parts = match.slice(1).map((value, position) => value ? `${Number(value)} ${units[position]}${Number(value) === 1 ? "" : "s"}` : null).filter((part) => part !== null);
+  return parts.length > 0 ? parts.join(" ") : spec;
+}
+async function credentialRequest(method, url, body, csrfToken) {
+  let response;
+  try {
+    response = await fetch(url, {
+      method,
+      credentials: "same-origin",
+      headers: {
+        Accept: "application/json",
+        ...body !== void 0 ? { "Content-Type": "application/json" } : {},
+        ...method !== "GET" ? { "X-CSRF-TOKEN": getCsrfToken(csrfToken) } : {}
+      },
+      body: body !== void 0 ? JSON.stringify(body) : void 0
+    });
+  } catch {
+    return { ok: false, status: 0, message: "The server could not be reached. Check the connection and try again." };
+  }
+  const payload = await response.json().catch(() => null);
+  if (response.ok) {
+    const data = typeof payload === "object" && payload !== null && "data" in payload ? payload.data : payload;
+    return { ok: true, status: response.status, data };
+  }
+  return { ok: false, status: response.status, message: refusalMessage(response.status, payload) };
+}
+function refusalMessage(status, payload) {
+  if (status === 401 || status === 419) {
+    return "Your session has expired. Reload the page and sign in again.";
+  }
+  if (typeof payload === "object" && payload !== null) {
+    const errors = payload.errors;
+    if (errors && typeof errors === "object") {
+      const first = Object.values(errors)[0];
+      if (Array.isArray(first) && typeof first[0] === "string") {
+        return first[0];
+      }
+    }
+    const message = payload.message;
+    if (typeof message === "string" && message !== "") {
+      return message;
+    }
+  }
+  if (status === 403) {
+    return "You do not have permission to do that.";
+  }
+  if (status === 404) {
+    return "That credential no longer exists, or creating credentials is unavailable right now.";
+  }
+  return "That action could not be completed.";
+}
 // Annotate the CommonJS export names for ESM import in node:
 0 && (module.exports = {
+  ApiCredentialsSection,
   ChangePasswordForm,
   LoginForm,
   PasskeyLoginButton,
@@ -1008,6 +1400,7 @@ function relyingApplicationsFrom(value) {
   arrayBufferToBase64url,
   authenticateWithPasskey,
   base64urlToArrayBuffer,
+  describeDuration,
   getCsrfToken,
   getDefaultPasskeyName,
   isAbortError,

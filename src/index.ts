@@ -4,3 +4,4 @@ export * from './passkey-section';
 export * from './relying-applications';
 export * from './types';
 export * from './webauthn-utils';
+export * from './api-credentials-section';
