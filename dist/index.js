@@ -979,7 +979,12 @@ function ApiCredentialsSection({ indexUrl, components, links = [], csrfToken, on
     setIndex(null);
     void reload();
   }, [reload]);
-  const shared = { components, csrfToken, onError, onSuccess };
+  const removeLocally = React5.useCallback((list, id) => {
+    setIndex(
+      (current) => current === null ? current : list === "tokens" ? { ...current, tokens: current.tokens.filter((token) => token.id !== id) } : { ...current, apps: current.apps.filter((app) => app.id !== id) }
+    );
+  }, []);
+  const shared = { components, csrfToken, onError, onSuccess, removeLocally };
   return /* @__PURE__ */ jsxs4(Card, { children: [
     /* @__PURE__ */ jsxs4(CardHeader, { children: [
       /* @__PURE__ */ jsx4(CardTitle, { children: "API access" }),
@@ -1012,7 +1017,7 @@ function ApiCredentialsSection({ indexUrl, components, links = [], csrfToken, on
     ] }) })
   ] });
 }
-function TokenSection({ index, components, csrfToken, onIssued, reload, onSuccess, onError }) {
+function TokenSection({ index, components, csrfToken, onIssued, reload, onSuccess, onError, removeLocally }) {
   const { Button, Input, Label } = resolveAuthComponents(components);
   const [name, setName] = React5.useState("");
   const [scopes, setScopes] = React5.useState([]);
@@ -1053,6 +1058,7 @@ function TokenSection({ index, components, csrfToken, onIssued, reload, onSucces
       return;
     }
     setError(null);
+    removeLocally("tokens", token.id);
     onSuccess?.("API token revoked.");
     await reload();
     setPending((current) => current.filter((id) => id !== token.id));
@@ -1089,7 +1095,7 @@ function TokenSection({ index, components, csrfToken, onIssued, reload, onSucces
     ] }, token.id)) })
   ] });
 }
-function AppSection({ index, components, csrfToken, onIssued, reload, onSuccess, onError }) {
+function AppSection({ index, components, csrfToken, onIssued, reload, onSuccess, onError, removeLocally }) {
   const { Button, Input, Label } = resolveAuthComponents(components);
   const [name, setName] = React5.useState("");
   const [redirects, setRedirects] = React5.useState("");
@@ -1138,6 +1144,7 @@ function AppSection({ index, components, csrfToken, onIssued, reload, onSuccess,
       return;
     }
     setError(null);
+    removeLocally("apps", app.id);
     onSuccess?.("OAuth app deleted and its tokens revoked.");
     await reload();
     setPending((current) => current.filter((id) => id !== app.id));

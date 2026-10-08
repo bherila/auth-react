@@ -113,7 +113,19 @@ export function ApiCredentialsSection({ indexUrl, components, links = [], csrfTo
     void reload();
   }, [reload]);
 
-  const shared = { components, csrfToken, onError, onSuccess };
+  // A credential whose DELETE succeeded leaves the view at once, even if the
+  // refresh that follows fails - it must never look still live.
+  const removeLocally = React.useCallback((list: 'tokens' | 'apps', id: string) => {
+    setIndex((current) =>
+      current === null
+        ? current
+        : list === 'tokens'
+          ? { ...current, tokens: current.tokens.filter((token) => token.id !== id) }
+          : { ...current, apps: current.apps.filter((app) => app.id !== id) },
+    );
+  }, []);
+
+  const shared = { components, csrfToken, onError, onSuccess, removeLocally };
 
   return (
     <Card>
@@ -164,6 +176,7 @@ export function ApiCredentialsSection({ indexUrl, components, links = [], csrfTo
 
 interface SectionProps {
   index: ApiCredentialIndex;
+  removeLocally: (list: 'tokens' | 'apps', id: string) => void;
   components: AuthComponentInput;
   csrfToken?: string;
   onIssued: (issued: IssuedApiCredential) => void;
@@ -172,7 +185,7 @@ interface SectionProps {
   onError?: (field: string, message: string) => void;
 }
 
-function TokenSection({ index, components, csrfToken, onIssued, reload, onSuccess, onError }: SectionProps) {
+function TokenSection({ index, components, csrfToken, onIssued, reload, onSuccess, onError, removeLocally }: SectionProps) {
   const { Button, Input, Label } = resolveAuthComponents(components);
   const [name, setName] = React.useState('');
   const [scopes, setScopes] = React.useState<string[]>([]);
@@ -220,6 +233,7 @@ function TokenSection({ index, components, csrfToken, onIssued, reload, onSucces
       return;
     }
     setError(null);
+    removeLocally('tokens', token.id);
     onSuccess?.('API token revoked.');
     await reload();
     setPending((current) => current.filter((id) => id !== token.id));
@@ -267,7 +281,7 @@ function TokenSection({ index, components, csrfToken, onIssued, reload, onSucces
   );
 }
 
-function AppSection({ index, components, csrfToken, onIssued, reload, onSuccess, onError }: SectionProps) {
+function AppSection({ index, components, csrfToken, onIssued, reload, onSuccess, onError, removeLocally }: SectionProps) {
   const { Button, Input, Label } = resolveAuthComponents(components);
   const [name, setName] = React.useState('');
   const [redirects, setRedirects] = React.useState('');
@@ -324,6 +338,7 @@ function AppSection({ index, components, csrfToken, onIssued, reload, onSuccess,
       return;
     }
     setError(null);
+    removeLocally('apps', app.id);
     onSuccess?.('OAuth app deleted and its tokens revoked.');
     await reload();
     setPending((current) => current.filter((id) => id !== app.id));

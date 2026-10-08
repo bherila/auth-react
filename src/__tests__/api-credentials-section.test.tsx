@@ -257,4 +257,22 @@ describe('ApiCredentialsSection', () => {
     expect(await screen.findByText(/select the text and copy it manually/)).toBeTruthy();
     expect(screen.queryByText('Copied')).toBeNull();
   });
+
+  it('removes a revoked token even when the refresh fails', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi
+        .fn()
+        .mockResolvedValueOnce(
+          json(200, { data: index({ tokens: [{ id: 't1', name: 'Gone soon', scopes: [], created_at: null, expires_at: null, revoke_href: '/x/t1' }] }) }),
+        )
+        .mockResolvedValueOnce(json(200, { data: { revoked: true } }))
+        .mockResolvedValueOnce(json(500, { message: 'Refresh failed.' })),
+    );
+    render(<ApiCredentialsSection indexUrl="/i" components={components} />);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Revoke' }));
+
+    await waitFor(() => expect(screen.queryByText('Gone soon')).toBeNull());
+  });
 });
