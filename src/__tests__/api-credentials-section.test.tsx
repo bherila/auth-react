@@ -144,4 +144,16 @@ describe('ApiCredentialsSection', () => {
     expect(describeDuration('P1Y')).toBe('1 year');
     expect(describeDuration('nonsense')).toBe('nonsense');
   });
+
+  it('does not reload the index when the parent passes a new callback', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(json(500, { message: 'Boom' }));
+    vi.stubGlobal('fetch', fetchMock);
+    const { rerender } = render(<ApiCredentialsSection indexUrl="/i" components={components} onError={() => undefined} />);
+    await screen.findByRole('alert');
+    rerender(<ApiCredentialsSection indexUrl="/i" components={components} onError={() => undefined} />);
+    rerender(<ApiCredentialsSection indexUrl="/i" components={components} onError={() => undefined} />);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
 });

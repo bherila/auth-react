@@ -74,6 +74,11 @@ export function ApiCredentialsSection({ indexUrl, components, links = [], csrfTo
   const [issued, setIssued] = React.useState<IssuedApiCredential | null>(null);
   const [loadError, setLoadError] = React.useState<string | null>(null);
 
+  // Callbacks are read through a ref so an inline function from the parent
+  // never re-triggers the index load (which, on failure, could loop).
+  const onErrorRef = React.useRef(onError);
+  onErrorRef.current = onError;
+
   const reload = React.useCallback(async () => {
     const result = await credentialRequest<ApiCredentialIndex>('GET', indexUrl, undefined, csrfToken);
     if (result.ok) {
@@ -81,9 +86,9 @@ export function ApiCredentialsSection({ indexUrl, components, links = [], csrfTo
       setLoadError(null);
     } else {
       setLoadError(result.message);
-      onError?.('api-credentials', result.message);
+      onErrorRef.current?.('api-credentials', result.message);
     }
-  }, [indexUrl, csrfToken, onError]);
+  }, [indexUrl, csrfToken]);
 
   React.useEffect(() => {
     void reload();
