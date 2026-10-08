@@ -194,10 +194,14 @@ function TokenSection({ index, components, csrfToken, onIssued, reload, onSucces
   async function revoke(token: ApiCredentialToken) {
     const result = await credentialRequest('DELETE', token.revoke_href, undefined, csrfToken);
     if (!result.ok) {
+      // Shown here as well: onError is optional, and a silent failure leaves
+      // a credential live that the person believes is gone.
+      setError(result.message);
       onError?.('api-tokens', result.message);
 
       return;
     }
+    setError(null);
     onSuccess?.('API token revoked.');
     await reload();
   }
@@ -221,7 +225,6 @@ function TokenSection({ index, components, csrfToken, onIssued, reload, onSucces
               </label>
             ))}
           </fieldset>
-          {error !== null && <p role="alert">{error}</p>}
           <div>
             <Button type="submit" disabled={busy || name.trim() === '' || scopes.length === 0 || lifetime === ''}>
               Create API token
@@ -229,6 +232,7 @@ function TokenSection({ index, components, csrfToken, onIssued, reload, onSucces
           </div>
         </form>
       )}
+      {error !== null && <p role="alert">{error}</p>}
       <ul style={{ display: 'grid', gap: '0.5rem', listStyle: 'none', padding: 0, margin: 0, minWidth: 0 }}>
         {index.tokens.map((token) => (
           <li key={token.id} style={{ minWidth: 0, overflowWrap: 'anywhere' }}>
@@ -288,10 +292,12 @@ function AppSection({ index, components, csrfToken, onIssued, reload, onSuccess,
   async function remove(app: ApiCredentialApp) {
     const result = await credentialRequest('DELETE', app.delete_href, undefined, csrfToken);
     if (!result.ok) {
+      setError(result.message);
       onError?.('oauth-apps', result.message);
 
       return;
     }
+    setError(null);
     onSuccess?.('OAuth app deleted and its tokens revoked.');
     await reload();
   }
@@ -321,7 +327,6 @@ function AppSection({ index, components, csrfToken, onIssued, reload, onSuccess,
             </label>
           </fieldset>
           <ScopePicker idPrefix="oauth-app-scope" scopes={index.scopes} selected={scopes} onChange={setScopes} />
-          {error !== null && <p role="alert">{error}</p>}
           <div>
             <Button type="submit" disabled={busy || name.trim() === '' || redirectUris.length === 0 || scopes.length === 0}>
               Register OAuth app
@@ -329,6 +334,7 @@ function AppSection({ index, components, csrfToken, onIssued, reload, onSuccess,
           </div>
         </form>
       )}
+      {error !== null && <p role="alert">{error}</p>}
       <ul style={{ display: 'grid', gap: '0.5rem', listStyle: 'none', padding: 0, margin: 0, minWidth: 0 }}>
         {index.apps.map((app) => (
           <li key={app.id} style={{ minWidth: 0, overflowWrap: 'anywhere' }}>

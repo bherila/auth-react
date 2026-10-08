@@ -183,4 +183,21 @@ describe('ApiCredentialsSection', () => {
     expect(screen.queryByText('first-secret')).toBeNull();
     expect(screen.getByText('second-secret')).toBeTruthy();
   });
+
+  it('shows a failed revoke on the page even without an onError callback', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi
+        .fn()
+        .mockResolvedValueOnce(
+          json(200, { data: index({ tokens: [{ id: 't1', name: 'Mine', scopes: ['items:read'], created_at: null, expires_at: null, revoke_href: '/x/t1' }] }) }),
+        )
+        .mockResolvedValueOnce(json(419, { message: 'CSRF token mismatch.' })),
+    );
+    render(<ApiCredentialsSection indexUrl="/i" components={components} />);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Revoke' }));
+
+    expect((await screen.findByRole('alert')).textContent).toContain('Your session has expired');
+  });
 });
