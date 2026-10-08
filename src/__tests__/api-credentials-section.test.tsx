@@ -200,4 +200,25 @@ describe('ApiCredentialsSection', () => {
 
     expect((await screen.findByRole('alert')).textContent).toContain('Your session has expired');
   });
+
+  it('sends one request when revoke is double-clicked', async () => {
+    let finish: (response: Response) => void = () => undefined;
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        json(200, { data: index({ tokens: [{ id: 't1', name: 'Mine', scopes: ['items:read'], created_at: null, expires_at: null, revoke_href: '/x/t1' }] }) }),
+      )
+      .mockImplementationOnce(() => new Promise<Response>((resolve) => (finish = resolve)))
+      .mockResolvedValue(json(200, { data: index() }));
+    vi.stubGlobal('fetch', fetchMock);
+    render(<ApiCredentialsSection indexUrl="/i" components={components} />);
+
+    const revoke = await screen.findByRole('button', { name: 'Revoke' });
+    fireEvent.click(revoke);
+    fireEvent.click(revoke);
+    finish(json(200, { data: { revoked: true } }));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3));
+
+    expect(fetchMock.mock.calls.filter(([, init]) => (init as RequestInit | undefined)?.method === 'DELETE')).toHaveLength(1);
+  });
 });

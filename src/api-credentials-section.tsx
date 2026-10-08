@@ -191,11 +191,18 @@ function TokenSection({ index, components, csrfToken, onIssued, reload, onSucces
     await reload();
   }
 
+  const [pending, setPending] = React.useState<string[]>([]);
+
   async function revoke(token: ApiCredentialToken) {
+    if (pending.includes(token.id)) {
+      return;
+    }
+    setPending((current) => [...current, token.id]);
     const result = await credentialRequest('DELETE', token.revoke_href, undefined, csrfToken);
     if (!result.ok) {
       // Shown here as well: onError is optional, and a silent failure leaves
       // a credential live that the person believes is gone.
+      setPending((current) => current.filter((id) => id !== token.id));
       setError(result.message);
       onError?.('api-tokens', result.message);
 
@@ -204,6 +211,7 @@ function TokenSection({ index, components, csrfToken, onIssued, reload, onSucces
     setError(null);
     onSuccess?.('API token revoked.');
     await reload();
+    setPending((current) => current.filter((id) => id !== token.id));
   }
 
   return (
@@ -238,7 +246,7 @@ function TokenSection({ index, components, csrfToken, onIssued, reload, onSucces
           <li key={token.id} style={{ minWidth: 0, overflowWrap: 'anywhere' }}>
             <strong>{token.name}</strong> · {token.scopes.join(', ')}
             {token.expires_at !== null && <> · expires {new Date(token.expires_at).toLocaleString()}</>}{' '}
-            <Button type="button" onClick={() => void revoke(token)}>
+            <Button type="button" disabled={pending.includes(token.id)} onClick={() => void revoke(token)}>
               Revoke
             </Button>
           </li>
@@ -289,9 +297,16 @@ function AppSection({ index, components, csrfToken, onIssued, reload, onSuccess,
     await reload();
   }
 
+  const [pending, setPending] = React.useState<string[]>([]);
+
   async function remove(app: ApiCredentialApp) {
+    if (pending.includes(app.id)) {
+      return;
+    }
+    setPending((current) => [...current, app.id]);
     const result = await credentialRequest('DELETE', app.delete_href, undefined, csrfToken);
     if (!result.ok) {
+      setPending((current) => current.filter((id) => id !== app.id));
       setError(result.message);
       onError?.('oauth-apps', result.message);
 
@@ -300,6 +315,7 @@ function AppSection({ index, components, csrfToken, onIssued, reload, onSuccess,
     setError(null);
     onSuccess?.('OAuth app deleted and its tokens revoked.');
     await reload();
+    setPending((current) => current.filter((id) => id !== app.id));
   }
 
   return (
@@ -343,7 +359,7 @@ function AppSection({ index, components, csrfToken, onIssued, reload, onSuccess,
             {app.redirect_uris.join(', ')}
             <br />
             May request: {app.scopes.join(', ')}{' '}
-            <Button type="button" onClick={() => void remove(app)}>
+            <Button type="button" disabled={pending.includes(app.id)} onClick={() => void remove(app)}>
               Delete
             </Button>
           </li>
