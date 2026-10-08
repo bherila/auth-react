@@ -455,23 +455,33 @@ function IssuedNotice({
 
 function CopyButton({ text, label, components }: { text: string; label: string; components: AuthComponentInput }) {
   const { Button } = resolveAuthComponents(components);
-  const [copied, setCopied] = React.useState(false);
+  const [state, setState] = React.useState<'idle' | 'copied' | 'failed'>('idle');
 
   return (
-    <Button
-      type="button"
-      aria-label={`Copy ${label}`}
-      onClick={async () => {
-        try {
-          await navigator.clipboard?.writeText(text);
-          setCopied(true);
-        } catch {
-          setCopied(false);
-        }
-      }}
-    >
-      {copied ? 'Copied' : 'Copy'}
-    </Button>
+    <>
+      <Button
+        type="button"
+        aria-label={`Copy ${label}`}
+        onClick={async () => {
+          // "Copied" only when the clipboard really took it: a one-time secret
+          // dismissed on a false success is gone for good.
+          if (typeof navigator === 'undefined' || typeof navigator.clipboard?.writeText !== 'function') {
+            setState('failed');
+
+            return;
+          }
+          try {
+            await navigator.clipboard.writeText(text);
+            setState('copied');
+          } catch {
+            setState('failed');
+          }
+        }}
+      >
+        {state === 'copied' ? 'Copied' : 'Copy'}
+      </Button>
+      {state === 'failed' && <span role="status"> Copying is unavailable here; select the text and copy it manually.</span>}
+    </>
   );
 }
 

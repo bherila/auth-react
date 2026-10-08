@@ -244,4 +244,17 @@ describe('ApiCredentialsSection', () => {
     expect(screen.queryByText('Old context')).toBeNull();
     expect(screen.getByText('New context')).toBeTruthy();
   });
+
+  it('never reports a copy that did not happen', async () => {
+    vi.stubGlobal('navigator', { ...navigator, clipboard: undefined });
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(json(200, { data: index() })));
+    render(
+      <ApiCredentialsSection indexUrl="/i" components={components} links={[{ label: 'OpenAPI document', url: 'https://app.example.test/api/openapi.json' }]} />,
+    );
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Copy OpenAPI document' }));
+
+    expect(await screen.findByText(/select the text and copy it manually/)).toBeTruthy();
+    expect(screen.queryByText('Copied')).toBeNull();
+  });
 });

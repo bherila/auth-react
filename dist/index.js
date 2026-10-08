@@ -949,19 +949,34 @@ import { Fragment, jsx as jsx4, jsxs as jsxs4 } from "react/jsx-runtime";
 function ApiCredentialsSection({ indexUrl, components, links = [], csrfToken, onSuccess, onError }) {
   const { Card, CardContent, CardDescription, CardHeader, CardTitle } = resolveAuthComponents(components);
   const [index, setIndex] = React5.useState(null);
-  const [issued, setIssued] = React5.useState(null);
+  const [issued, setIssued] = React5.useState([]);
+  const issuedKey = React5.useRef(0);
+  const addIssued = React5.useCallback((credential) => {
+    issuedKey.current += 1;
+    const key = issuedKey.current;
+    setIssued((current) => [...current, { key, credential }]);
+  }, []);
   const [loadError, setLoadError] = React5.useState(null);
+  const onErrorRef = React5.useRef(onError);
+  onErrorRef.current = onError;
+  const generation = React5.useRef(0);
   const reload = React5.useCallback(async () => {
+    generation.current += 1;
+    const mine = generation.current;
     const result = await credentialRequest("GET", indexUrl, void 0, csrfToken);
+    if (mine !== generation.current) {
+      return;
+    }
     if (result.ok) {
       setIndex(result.data);
       setLoadError(null);
     } else {
       setLoadError(result.message);
-      onError?.("api-credentials", result.message);
+      onErrorRef.current?.("api-credentials", result.message);
     }
-  }, [indexUrl, csrfToken, onError]);
+  }, [indexUrl, csrfToken]);
   React5.useEffect(() => {
+    setIndex(null);
     void reload();
   }, [reload]);
   const shared = { components, csrfToken, onError, onSuccess };
@@ -979,12 +994,20 @@ function ApiCredentialsSection({ indexUrl, components, links = [], csrfToken, on
           /* @__PURE__ */ jsx4(CopyButton, { text: link.url, label: link.label, components })
         ] })
       ] }, link.label)) }),
-      issued !== null && /* @__PURE__ */ jsx4(IssuedNotice, { issued, components, onDismiss: () => setIssued(null) }),
+      issued.map(({ key, credential }) => /* @__PURE__ */ jsx4(
+        IssuedNotice,
+        {
+          issued: credential,
+          components,
+          onDismiss: () => setIssued((current) => current.filter((entry) => entry.key !== key))
+        },
+        key
+      )),
       loadError !== null && /* @__PURE__ */ jsx4("p", { role: "alert", children: loadError }),
       index !== null && /* @__PURE__ */ jsxs4(Fragment, { children: [
         (index.issue_token_href === null || index.register_app_href === null) && /* @__PURE__ */ jsx4("p", { role: "status", children: "Creating new credentials is unavailable right now. You can still revoke existing ones." }),
-        /* @__PURE__ */ jsx4(TokenSection, { index, ...shared, onIssued: setIssued, reload }),
-        /* @__PURE__ */ jsx4(AppSection, { index, ...shared, onIssued: setIssued, reload })
+        /* @__PURE__ */ jsx4(TokenSection, { index, ...shared, onIssued: addIssued, reload }),
+        /* @__PURE__ */ jsx4(AppSection, { index, ...shared, onIssued: addIssued, reload })
       ] })
     ] }) })
   ] });
@@ -1016,14 +1039,23 @@ function TokenSection({ index, components, csrfToken, onIssued, reload, onSucces
     onSuccess?.("API token created.");
     await reload();
   }
+  const [pending, setPending] = React5.useState([]);
   async function revoke(token) {
+    if (pending.includes(token.id)) {
+      return;
+    }
+    setPending((current) => [...current, token.id]);
     const result = await credentialRequest("DELETE", token.revoke_href, void 0, csrfToken);
     if (!result.ok) {
+      setPending((current) => current.filter((id) => id !== token.id));
+      setError(result.message);
       onError?.("api-tokens", result.message);
       return;
     }
+    setError(null);
     onSuccess?.("API token revoked.");
     await reload();
+    setPending((current) => current.filter((id) => id !== token.id));
   }
   return /* @__PURE__ */ jsxs4("section", { style: { display: "grid", gap: "0.75rem", minWidth: 0 }, children: [
     /* @__PURE__ */ jsx4("h3", { children: "API tokens" }),
@@ -1041,9 +1073,9 @@ function TokenSection({ index, components, csrfToken, onIssued, reload, onSucces
           describeDuration(spec)
         ] }, spec))
       ] }),
-      error !== null && /* @__PURE__ */ jsx4("p", { role: "alert", children: error }),
       /* @__PURE__ */ jsx4("div", { children: /* @__PURE__ */ jsx4(Button, { type: "submit", disabled: busy || name.trim() === "" || scopes.length === 0 || lifetime === "", children: "Create API token" }) })
     ] }),
+    error !== null && /* @__PURE__ */ jsx4("p", { role: "alert", children: error }),
     /* @__PURE__ */ jsx4("ul", { style: { display: "grid", gap: "0.5rem", listStyle: "none", padding: 0, margin: 0, minWidth: 0 }, children: index.tokens.map((token) => /* @__PURE__ */ jsxs4("li", { style: { minWidth: 0, overflowWrap: "anywhere" }, children: [
       /* @__PURE__ */ jsx4("strong", { children: token.name }),
       " \xB7 ",
@@ -1053,7 +1085,7 @@ function TokenSection({ index, components, csrfToken, onIssued, reload, onSucces
         new Date(token.expires_at).toLocaleString()
       ] }),
       " ",
-      /* @__PURE__ */ jsx4(Button, { type: "button", onClick: () => void revoke(token), children: "Revoke" })
+      /* @__PURE__ */ jsx4(Button, { type: "button", disabled: pending.includes(token.id), onClick: () => void revoke(token), children: "Revoke" })
     ] }, token.id)) })
   ] });
 }
@@ -1092,14 +1124,23 @@ function AppSection({ index, components, csrfToken, onIssued, reload, onSuccess,
     onSuccess?.("OAuth app registered.");
     await reload();
   }
+  const [pending, setPending] = React5.useState([]);
   async function remove(app) {
+    if (pending.includes(app.id)) {
+      return;
+    }
+    setPending((current) => [...current, app.id]);
     const result = await credentialRequest("DELETE", app.delete_href, void 0, csrfToken);
     if (!result.ok) {
+      setPending((current) => current.filter((id) => id !== app.id));
+      setError(result.message);
       onError?.("oauth-apps", result.message);
       return;
     }
+    setError(null);
     onSuccess?.("OAuth app deleted and its tokens revoked.");
     await reload();
+    setPending((current) => current.filter((id) => id !== app.id));
   }
   return /* @__PURE__ */ jsxs4("section", { style: { display: "grid", gap: "0.75rem", minWidth: 0 }, children: [
     /* @__PURE__ */ jsx4("h3", { children: "OAuth apps" }),
@@ -1124,9 +1165,9 @@ function AppSection({ index, components, csrfToken, onIssued, reload, onSuccess,
         ] })
       ] }),
       /* @__PURE__ */ jsx4(ScopePicker, { idPrefix: "oauth-app-scope", scopes: index.scopes, selected: scopes, onChange: setScopes }),
-      error !== null && /* @__PURE__ */ jsx4("p", { role: "alert", children: error }),
       /* @__PURE__ */ jsx4("div", { children: /* @__PURE__ */ jsx4(Button, { type: "submit", disabled: busy || name.trim() === "" || redirectUris.length === 0 || scopes.length === 0, children: "Register OAuth app" }) })
     ] }),
+    error !== null && /* @__PURE__ */ jsx4("p", { role: "alert", children: error }),
     /* @__PURE__ */ jsx4("ul", { style: { display: "grid", gap: "0.5rem", listStyle: "none", padding: 0, margin: 0, minWidth: 0 }, children: index.apps.map((app) => /* @__PURE__ */ jsxs4("li", { style: { minWidth: 0, overflowWrap: "anywhere" }, children: [
       /* @__PURE__ */ jsx4("strong", { children: app.name }),
       " \xB7 client ID ",
@@ -1139,7 +1180,7 @@ function AppSection({ index, components, csrfToken, onIssued, reload, onSuccess,
       "May request: ",
       app.scopes.join(", "),
       " ",
-      /* @__PURE__ */ jsx4(Button, { type: "button", onClick: () => void remove(app), children: "Delete" })
+      /* @__PURE__ */ jsx4(Button, { type: "button", disabled: pending.includes(app.id), onClick: () => void remove(app), children: "Delete" })
     ] }, app.id)) })
   ] });
 }
@@ -1198,23 +1239,30 @@ function IssuedNotice({
 }
 function CopyButton({ text, label, components }) {
   const { Button } = resolveAuthComponents(components);
-  const [copied, setCopied] = React5.useState(false);
-  return /* @__PURE__ */ jsx4(
-    Button,
-    {
-      type: "button",
-      "aria-label": `Copy ${label}`,
-      onClick: async () => {
-        try {
-          await navigator.clipboard?.writeText(text);
-          setCopied(true);
-        } catch {
-          setCopied(false);
-        }
-      },
-      children: copied ? "Copied" : "Copy"
-    }
-  );
+  const [state, setState] = React5.useState("idle");
+  return /* @__PURE__ */ jsxs4(Fragment, { children: [
+    /* @__PURE__ */ jsx4(
+      Button,
+      {
+        type: "button",
+        "aria-label": `Copy ${label}`,
+        onClick: async () => {
+          if (typeof navigator === "undefined" || typeof navigator.clipboard?.writeText !== "function") {
+            setState("failed");
+            return;
+          }
+          try {
+            await navigator.clipboard.writeText(text);
+            setState("copied");
+          } catch {
+            setState("failed");
+          }
+        },
+        children: state === "copied" ? "Copied" : "Copy"
+      }
+    ),
+    state === "failed" && /* @__PURE__ */ jsx4("span", { role: "status", children: " Copying is unavailable here; select the text and copy it manually." })
+  ] });
 }
 function describeDuration(spec) {
   const match = /^P(?:(\d+)Y)?(?:(\d+)M)?(?:(\d+)W)?(?:(\d+)D)?(?:T(?:(\d+)H)?(?:(\d+)M)?)?$/.exec(spec);
