@@ -87,6 +87,84 @@ describe('ApiCredentialsSection', () => {
     expect((await screen.findByRole('alert')).textContent).toContain('Your session has expired');
   });
 
+  it('routes every request through an injected request function instead of fetch', async () => {
+    const fetchMock = vi.fn().mockRejectedValue(new Error('fetch must not be used'));
+    vi.stubGlobal('fetch', fetchMock);
+    const request = vi
+      .fn()
+      .mockResolvedValueOnce({ ok: true, status: 200, payload: { data: index() } })
+      .mockResolvedValueOnce({ ok: true, status: 201, payload: { data: { kind: 'token', name: 'Connector', token: 'synthetic-secret-token' } } })
+      .mockResolvedValueOnce({ ok: true, status: 200, payload: { data: index() } });
+    render(<ApiCredentialsSection indexUrl="/account/api-credentials" components={components} request={request} />);
+
+    fireEvent.change(await screen.findByLabelText('Token name'), { target: { value: 'Connector' } });
+    fireEvent.click(screen.getAllByLabelText(/items:read/)[0]);
+    fireEvent.click(screen.getByRole('button', { name: 'Create API token' }));
+
+    expect(await screen.findByText('synthetic-secret-token')).toBeTruthy();
+    await waitFor(() => expect(request).toHaveBeenCalledTimes(3));
+    expect(request.mock.calls[0]).toEqual(['GET', '/account/api-credentials', undefined]);
+    expect(request.mock.calls[1]).toEqual(['POST', '/account/api-credentials/tokens', { name: 'Connector', scopes: ['items:read'], lifetime: 'PT4H' }]);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("shows the injected request function's refusal message", async () => {
+    const request = vi
+      .fn()
+      .mockResolvedValueOnce({ ok: true, status: 200, payload: { data: index() } })
+      .mockResolvedValueOnce({ ok: false, status: 419, message: 'Sign in again to continue.' });
+    render(<ApiCredentialsSection indexUrl="/i" components={components} request={request} />);
+
+    fireEvent.change(await screen.findByLabelText('Token name'), { target: { value: 'Connector' } });
+    fireEvent.click(screen.getAllByLabelText(/items:read/)[0]);
+    fireEvent.click(screen.getByRole('button', { name: 'Create API token' }));
+
+    expect((await screen.findByRole('alert')).textContent).toContain('Sign in again to continue.');
+  });
+
+  it("renders the app's Textarea, Checkbox and RadioGroup in place of native elements", async () => {
+    const request = vi
+      .fn()
+      .mockResolvedValueOnce({ ok: true, status: 200, payload: { data: index() } })
+      .mockResolvedValueOnce({ ok: true, status: 201, payload: { data: { kind: 'app', name: 'App', client_id: 'c1', client_secret: null } } })
+      .mockResolvedValue({ ok: true, status: 200, payload: { data: index() } });
+    const withPrimitives: AuthComponentSet = {
+      ...components,
+      Textarea: (props) => <textarea data-primitive="textarea" {...props} />,
+      Checkbox: ({ id, checked, onCheckedChange }) => (
+        <button type="button" role="checkbox" id={id} aria-checked={checked} data-primitive="checkbox" onClick={() => onCheckedChange(!checked)} />
+      ),
+      RadioGroup: ({ name, value, onValueChange, options }) => (
+        <div role="radiogroup" data-primitive="radio-group" data-name={name}>
+          {options.map((option) => (
+            <button key={option.value} type="button" role="radio" aria-checked={value === option.value} onClick={() => onValueChange(option.value)}>
+              {option.label}
+            </button>
+          ))}
+        </div>
+      ),
+    };
+    const { container } = render(<ApiCredentialsSection indexUrl="/i" components={withPrimitives} request={request} />);
+
+    await screen.findByLabelText('App name');
+    expect(container.querySelectorAll('input[type="checkbox"], input[type="radio"]')).toHaveLength(0);
+    expect(container.querySelectorAll('textarea:not([data-primitive])')).toHaveLength(0);
+    expect(container.querySelectorAll('[data-primitive="radio-group"]')).toHaveLength(2);
+
+    fireEvent.change(screen.getByLabelText('App name'), { target: { value: 'App' } });
+    fireEvent.change(screen.getByLabelText('Redirect URIs (one per line)'), { target: { value: 'https://app.example.test/cb' } });
+    fireEvent.click(container.querySelector('#oauth-app-scope-items\\:write') as Element);
+    fireEvent.click(screen.getByRole('radio', { name: /Public/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'Register OAuth app' }));
+
+    await waitFor(() => expect(request).toHaveBeenCalledTimes(3));
+    expect(request.mock.calls[1]).toEqual([
+      'POST',
+      '/account/api-credentials/apps',
+      { name: 'App', redirect_uris: ['https://app.example.test/cb'], confidential: false, scopes: ['items:write'] },
+    ]);
+  });
+
   it('shows a validation refusal and keeps the form', async () => {
     vi.stubGlobal(
       'fetch',

@@ -68,6 +68,27 @@ export type AuthButtonComponentProps = React.ButtonHTMLAttributes<HTMLButtonElem
 export type AuthInputComponentProps = React.InputHTMLAttributes<HTMLInputElement>;
 export type AuthLabelComponentProps = React.LabelHTMLAttributes<HTMLLabelElement>;
 export type AuthContainerComponentProps = React.HTMLAttributes<HTMLDivElement>;
+export type AuthTextareaComponentProps = React.TextareaHTMLAttributes<HTMLTextAreaElement>;
+
+/** A controlled checkbox: the app's own, e.g. a design-system `Checkbox` with `onCheckedChange`. */
+export interface AuthCheckboxComponentProps {
+  id: string;
+  checked: boolean;
+  onCheckedChange: (checked: boolean) => void;
+}
+
+export interface AuthRadioGroupOption {
+  value: string;
+  label: React.ReactNode;
+}
+
+/** A controlled set of radio options, rendered however the app renders radio groups. */
+export interface AuthRadioGroupComponentProps {
+  name: string;
+  value: string;
+  onValueChange: (value: string) => void;
+  options: AuthRadioGroupOption[];
+}
 
 export interface AuthComponentSet {
   Button: React.ComponentType<AuthButtonComponentProps>;
@@ -78,6 +99,10 @@ export interface AuthComponentSet {
   CardTitle: React.ComponentType<AuthContainerComponentProps>;
   Input: React.ComponentType<AuthInputComponentProps>;
   Label: React.ComponentType<AuthLabelComponentProps>;
+  /** Optional; native elements are rendered when omitted. */
+  Textarea?: React.ComponentType<AuthTextareaComponentProps>;
+  Checkbox?: React.ComponentType<AuthCheckboxComponentProps>;
+  RadioGroup?: React.ComponentType<AuthRadioGroupComponentProps>;
 }
 
 export type AuthComponents = AuthComponentSet;

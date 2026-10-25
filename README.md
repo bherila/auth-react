@@ -231,6 +231,16 @@ It talks to the auth package's credential service (`oauth_server.credentials`) t
 - **Requests** send the session cookie and `X-CSRF-TOKEN`. A 401 or 419 response becomes "sign in again".
 - **While the server reports issuing unavailable** (OAuth switched off), the create forms are hidden, and revoke and delete still work.
 - **Token lifetimes** are ISO-8601 durations from the server, displayed as text (`PT4H` shows as "4 hours").
+- **Your own HTTP client:** pass `request` to send every credential request through it, so it gets the same session-expiry handling as the rest of the app. `request(method, url, body)` resolves with `{ ok: true, status, payload }` (the parsed JSON; the component reads its `data` when present) or `{ ok: false, status, message }`, and the message is shown. With `request`, sending the CSRF token is the client's job; without it, the built-in `fetch` is used as above.
+- **Your own form controls:** besides the required components, `components` may include `Textarea`, `Checkbox` (`{ id, checked, onCheckedChange }`) and `RadioGroup` (`{ name, value, onValueChange, options: [{ value, label }] }`). Each one you omit is rendered as the native element.
+
+```tsx
+<ApiCredentialsSection
+  indexUrl="/account/api-credentials"
+  components={{ ...components, Textarea, Checkbox: AppCheckbox, RadioGroup: AppRadioGroup }}
+  request={(method, url, body) => myClient.send(method, url, body)}
+/>
+```
 
 ## Endpoint Defaults
 
