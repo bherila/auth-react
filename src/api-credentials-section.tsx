@@ -48,6 +48,18 @@ export interface ApiCredentialEndpointLink {
   url: string;
 }
 
+/**
+ * The outcome of one credential request: on success the parsed JSON body
+ * (the component reads its `data` when present), on failure the message to show.
+ */
+export type ApiCredentialRequestResult = { ok: true; status: number; payload: unknown } | { ok: false; status: number; message: string };
+
+/**
+ * Performs one credential request in place of the built-in `fetch`, so an app
+ * can route it through its own client (session-expiry redirect, CSRF, retries).
+ */
+export type ApiCredentialRequest = (method: 'GET' | 'POST' | 'DELETE', url: string, body?: object) => Promise<ApiCredentialRequestResult>;
+
 export interface ApiCredentialsSectionProps {
   /** The credential service's index URL (GET). */
   indexUrl: string;
@@ -55,6 +67,8 @@ export interface ApiCredentialsSectionProps {
   /** Values a connector needs: the OpenAPI document, API base, OAuth authorize/token URLs, MCP URL. */
   links?: ApiCredentialEndpointLink[];
   csrfToken?: string;
+  /** Replaces the built-in `fetch` for every credential request; `csrfToken` is then the app's to send. */
+  request?: ApiCredentialRequest;
   onSuccess?: (message: string) => void;
   onError?: (field: string, message: string) => void;
 }
@@ -68,7 +82,7 @@ export interface ApiCredentialsSectionProps {
  * in this component's memory; afterwards only the lists are reloaded, so it is
  * never part of page props or browser history.
  */
-export function ApiCredentialsSection({ indexUrl, components, links = [], csrfToken, onSuccess, onError }: ApiCredentialsSectionProps) {
+export function ApiCredentialsSection({ indexUrl, components, links = [], csrfToken, request, onSuccess, onError }: ApiCredentialsSectionProps) {
   const { Card, CardContent, CardDescription, CardHeader, CardTitle } = resolveAuthComponents(components);
   const [index, setIndex] = React.useState<ApiCredentialIndex | null>(null);
   // Every secret not yet dismissed. A second creation must never replace a
@@ -95,14 +109,14 @@ export function ApiCredentialsSection({ indexUrl, components, links = [], csrfTo
   // Reloads always target the context shown now: an action that started
   // under a previous account and finishes later must not fetch (and display)
   // that account's index again.
-  const context = React.useRef({ indexUrl, csrfToken });
-  context.current = { indexUrl, csrfToken };
+  const context = React.useRef({ indexUrl, csrfToken, request });
+  context.current = { indexUrl, csrfToken, request };
 
   const reload = React.useCallback(async () => {
     generation.current += 1;
     const mine = generation.current;
-    const { indexUrl: url, csrfToken: token } = context.current;
-    const result = await credentialRequest<ApiCredentialIndex>('GET', url, undefined, token);
+    const { indexUrl: url, csrfToken: token, request: send } = context.current;
+    const result = await credentialRequest<ApiCredentialIndex>('GET', url, undefined, token, send);
     if (mine !== generation.current) {
       return;
     }
@@ -132,7 +146,7 @@ export function ApiCredentialsSection({ indexUrl, components, links = [], csrfTo
     );
   }, []);
 
-  const shared = { components, csrfToken, onError, onSuccess, removeLocally };
+  const shared = { components, csrfToken, request, onError, onSuccess, removeLocally };
 
   return (
     <Card>
@@ -186,14 +200,15 @@ interface SectionProps {
   removeLocally: (list: 'tokens' | 'apps', id: string) => void;
   components: AuthComponentInput;
   csrfToken?: string;
+  request?: ApiCredentialRequest;
   onIssued: (issued: IssuedApiCredential) => void;
   reload: () => Promise<void>;
   onSuccess?: (message: string) => void;
   onError?: (field: string, message: string) => void;
 }
 
-function TokenSection({ index, components, csrfToken, onIssued, reload, onSuccess, onError, removeLocally }: SectionProps) {
-  const { Button, Input, Label } = resolveAuthComponents(components);
+function TokenSection({ index, components, csrfToken, request, onIssued, reload, onSuccess, onError, removeLocally }: SectionProps) {
+  const { Button, Input, Label, RadioGroup } = resolveAuthComponents(components);
   const [name, setName] = React.useState('');
   const [scopes, setScopes] = React.useState<string[]>([]);
   const [lifetime, setLifetime] = React.useState(index.token_lifetimes[0] ?? '');
@@ -206,7 +221,7 @@ function TokenSection({ index, components, csrfToken, onIssued, reload, onSucces
       return;
     }
     setBusy(true);
-    const result = await credentialRequest<IssuedApiCredential>('POST', index.issue_token_href, { name, scopes, lifetime }, csrfToken);
+    const result = await credentialRequest<IssuedApiCredential>('POST', index.issue_token_href, { name, scopes, lifetime }, csrfToken, request);
     setBusy(false);
     if (!result.ok) {
       setError(result.message);
@@ -229,7 +244,7 @@ function TokenSection({ index, components, csrfToken, onIssued, reload, onSucces
       return;
     }
     setPending((current) => [...current, token.id]);
-    const result = await credentialRequest('DELETE', token.revoke_href, undefined, csrfToken);
+    const result = await credentialRequest('DELETE', token.revoke_href, undefined, csrfToken, request);
     if (!result.ok) {
       // Shown here as well: onError is optional, and a silent failure leaves
       // a credential live that the person believes is gone.
@@ -255,15 +270,24 @@ function TokenSection({ index, components, csrfToken, onIssued, reload, onSucces
             <Label htmlFor="api-token-name">Token name</Label>
             <Input id="api-token-name" value={name} maxLength={120} onChange={(event) => setName(event.target.value)} />
           </div>
-          <ScopePicker idPrefix="api-token-scope" scopes={index.scopes} selected={scopes} onChange={setScopes} />
+          <ScopePicker idPrefix="api-token-scope" scopes={index.scopes} selected={scopes} onChange={setScopes} components={components} />
           <fieldset style={{ display: 'grid', gap: '0.25rem', border: 0, padding: 0 }}>
             <legend>Expires after</legend>
-            {index.token_lifetimes.map((spec) => (
-              <label key={spec}>
-                <input type="radio" name="api-token-lifetime" checked={lifetime === spec} onChange={() => setLifetime(spec)} />{' '}
-                {describeDuration(spec)}
-              </label>
-            ))}
+            {RadioGroup ? (
+              <RadioGroup
+                name="api-token-lifetime"
+                value={lifetime}
+                onValueChange={setLifetime}
+                options={index.token_lifetimes.map((spec) => ({ value: spec, label: describeDuration(spec) }))}
+              />
+            ) : (
+              index.token_lifetimes.map((spec) => (
+                <label key={spec}>
+                  <input type="radio" name="api-token-lifetime" checked={lifetime === spec} onChange={() => setLifetime(spec)} />{' '}
+                  {describeDuration(spec)}
+                </label>
+              ))
+            )}
           </fieldset>
           <div>
             <Button type="submit" disabled={busy || name.trim() === '' || scopes.length === 0 || lifetime === ''}>
@@ -288,8 +312,8 @@ function TokenSection({ index, components, csrfToken, onIssued, reload, onSucces
   );
 }
 
-function AppSection({ index, components, csrfToken, onIssued, reload, onSuccess, onError, removeLocally }: SectionProps) {
-  const { Button, Input, Label } = resolveAuthComponents(components);
+function AppSection({ index, components, csrfToken, request, onIssued, reload, onSuccess, onError, removeLocally }: SectionProps) {
+  const { Button, Input, Label, Textarea, RadioGroup } = resolveAuthComponents(components);
   const [name, setName] = React.useState('');
   const [redirects, setRedirects] = React.useState('');
   const [confidential, setConfidential] = React.useState(true);
@@ -312,6 +336,7 @@ function AppSection({ index, components, csrfToken, onIssued, reload, onSuccess,
       index.register_app_href,
       { name, redirect_uris: redirectUris, confidential, scopes },
       csrfToken,
+      request,
     );
     setBusy(false);
     if (!result.ok) {
@@ -336,7 +361,7 @@ function AppSection({ index, components, csrfToken, onIssued, reload, onSuccess,
       return;
     }
     setPending((current) => [...current, app.id]);
-    const result = await credentialRequest('DELETE', app.delete_href, undefined, csrfToken);
+    const result = await credentialRequest('DELETE', app.delete_href, undefined, csrfToken, request);
     if (!result.ok) {
       setPending((current) => current.filter((id) => id !== app.id));
       setError(result.message);
@@ -362,20 +387,38 @@ function AppSection({ index, components, csrfToken, onIssued, reload, onSuccess,
           </div>
           <div style={{ display: 'grid', gap: '0.25rem' }}>
             <Label htmlFor="oauth-app-redirects">Redirect URIs (one per line)</Label>
-            <textarea id="oauth-app-redirects" rows={3} value={redirects} onChange={(event) => setRedirects(event.target.value)} />
+            {Textarea ? (
+              <Textarea id="oauth-app-redirects" rows={3} value={redirects} onChange={(event) => setRedirects(event.target.value)} />
+            ) : (
+              <textarea id="oauth-app-redirects" rows={3} value={redirects} onChange={(event) => setRedirects(event.target.value)} />
+            )}
           </div>
           <fieldset style={{ display: 'grid', gap: '0.25rem', border: 0, padding: 0 }}>
             <legend>Client type</legend>
-            <label>
-              <input type="radio" name="oauth-app-type" checked={confidential} onChange={() => setConfidential(true)} /> Confidential:
-              the app keeps a client secret on its server
-            </label>
-            <label>
-              <input type="radio" name="oauth-app-type" checked={!confidential} onChange={() => setConfidential(false)} /> Public:
-              no secret, PKCE only
-            </label>
+            {RadioGroup ? (
+              <RadioGroup
+                name="oauth-app-type"
+                value={confidential ? 'confidential' : 'public'}
+                onValueChange={(value) => setConfidential(value === 'confidential')}
+                options={[
+                  { value: 'confidential', label: 'Confidential: the app keeps a client secret on its server' },
+                  { value: 'public', label: 'Public: no secret, PKCE only' },
+                ]}
+              />
+            ) : (
+              <>
+                <label>
+                  <input type="radio" name="oauth-app-type" checked={confidential} onChange={() => setConfidential(true)} /> Confidential:
+                  the app keeps a client secret on its server
+                </label>
+                <label>
+                  <input type="radio" name="oauth-app-type" checked={!confidential} onChange={() => setConfidential(false)} /> Public:
+                  no secret, PKCE only
+                </label>
+              </>
+            )}
           </fieldset>
-          <ScopePicker idPrefix="oauth-app-scope" scopes={index.scopes} selected={scopes} onChange={setScopes} />
+          <ScopePicker idPrefix="oauth-app-scope" scopes={index.scopes} selected={scopes} onChange={setScopes} components={components} />
           <div>
             <Button type="submit" disabled={busy || name.trim() === '' || redirectUris.length === 0 || scopes.length === 0}>
               Register OAuth app
@@ -407,12 +450,18 @@ function ScopePicker({
   scopes,
   selected,
   onChange,
+  components,
 }: {
   idPrefix: string;
   scopes: ApiCredentialScope[];
   selected: string[];
   onChange: (next: string[]) => void;
+  components: AuthComponentInput;
 }) {
+  const { Checkbox } = resolveAuthComponents(components);
+  const toggle = (scopeId: string, checked: boolean) =>
+    onChange(checked ? [...selected, scopeId] : selected.filter((value) => value !== scopeId));
+
   return (
     <fieldset style={{ display: 'grid', gap: '0.25rem', border: 0, padding: 0, minWidth: 0 }}>
       <legend>Permissions</legend>
@@ -421,14 +470,11 @@ function ScopePicker({
 
         return (
           <label key={scope.id} htmlFor={id} style={{ overflowWrap: 'anywhere' }}>
-            <input
-              id={id}
-              type="checkbox"
-              checked={selected.includes(scope.id)}
-              onChange={(event) =>
-                onChange(event.target.checked ? [...selected, scope.id] : selected.filter((value) => value !== scope.id))
-              }
-            />{' '}
+            {Checkbox ? (
+              <Checkbox id={id} checked={selected.includes(scope.id)} onCheckedChange={(checked) => toggle(scope.id, checked)} />
+            ) : (
+              <input id={id} type="checkbox" checked={selected.includes(scope.id)} onChange={(event) => toggle(scope.id, event.target.checked)} />
+            )}{' '}
             <code>{scope.id}</code> {scope.description}
           </label>
         );
@@ -529,7 +575,19 @@ async function credentialRequest<T = unknown>(
   url: string,
   body: object | undefined,
   csrfToken?: string,
+  request?: ApiCredentialRequest,
 ): Promise<CredentialResult<T>> {
+  if (request !== undefined) {
+    let result: ApiCredentialRequestResult;
+    try {
+      result = await request(method, url, body);
+    } catch {
+      return { ok: false, status: 0, message: 'The server could not be reached. Check the connection and try again.' };
+    }
+
+    return result.ok ? { ok: true, status: result.status, data: unwrapData<T>(result.payload) } : result;
+  }
+
   let response: Response;
   try {
     response = await fetch(url, {
@@ -548,12 +606,14 @@ async function credentialRequest<T = unknown>(
 
   const payload: unknown = await response.json().catch(() => null);
   if (response.ok) {
-    const data = typeof payload === 'object' && payload !== null && 'data' in payload ? (payload as { data: T }).data : (payload as T);
-
-    return { ok: true, status: response.status, data };
+    return { ok: true, status: response.status, data: unwrapData<T>(payload) };
   }
 
   return { ok: false, status: response.status, message: refusalMessage(response.status, payload) };
+}
+
+function unwrapData<T>(payload: unknown): T {
+  return typeof payload === 'object' && payload !== null && 'data' in payload ? (payload as { data: T }).data : (payload as T);
 }
 
 function refusalMessage(status: number, payload: unknown): string {

@@ -61,6 +61,24 @@ type AuthButtonComponentProps = React.ButtonHTMLAttributes<HTMLButtonElement> & 
 type AuthInputComponentProps = React.InputHTMLAttributes<HTMLInputElement>;
 type AuthLabelComponentProps = React.LabelHTMLAttributes<HTMLLabelElement>;
 type AuthContainerComponentProps = React.HTMLAttributes<HTMLDivElement>;
+type AuthTextareaComponentProps = React.TextareaHTMLAttributes<HTMLTextAreaElement>;
+/** A controlled checkbox: the app's own, e.g. a design-system `Checkbox` with `onCheckedChange`. */
+interface AuthCheckboxComponentProps {
+    id: string;
+    checked: boolean;
+    onCheckedChange: (checked: boolean) => void;
+}
+interface AuthRadioGroupOption {
+    value: string;
+    label: React.ReactNode;
+}
+/** A controlled set of radio options, rendered however the app renders radio groups. */
+interface AuthRadioGroupComponentProps {
+    name: string;
+    value: string;
+    onValueChange: (value: string) => void;
+    options: AuthRadioGroupOption[];
+}
 interface AuthComponentSet {
     Button: React.ComponentType<AuthButtonComponentProps>;
     Card: React.ComponentType<AuthContainerComponentProps>;
@@ -70,6 +88,10 @@ interface AuthComponentSet {
     CardTitle: React.ComponentType<AuthContainerComponentProps>;
     Input: React.ComponentType<AuthInputComponentProps>;
     Label: React.ComponentType<AuthLabelComponentProps>;
+    /** Optional; native elements are rendered when omitted. */
+    Textarea?: React.ComponentType<AuthTextareaComponentProps>;
+    Checkbox?: React.ComponentType<AuthCheckboxComponentProps>;
+    RadioGroup?: React.ComponentType<AuthRadioGroupComponentProps>;
 }
 type AuthComponents = AuthComponentSet;
 type AuthComponentOverrides = Partial<AuthComponentSet>;
@@ -260,6 +282,24 @@ interface ApiCredentialEndpointLink {
     label: string;
     url: string;
 }
+/**
+ * The outcome of one credential request: on success the parsed JSON body
+ * (the component reads its `data` when present), on failure the message to show.
+ */
+type ApiCredentialRequestResult = {
+    ok: true;
+    status: number;
+    payload: unknown;
+} | {
+    ok: false;
+    status: number;
+    message: string;
+};
+/**
+ * Performs one credential request in place of the built-in `fetch`, so an app
+ * can route it through its own client (session-expiry redirect, CSRF, retries).
+ */
+type ApiCredentialRequest = (method: 'GET' | 'POST' | 'DELETE', url: string, body?: object) => Promise<ApiCredentialRequestResult>;
 interface ApiCredentialsSectionProps {
     /** The credential service's index URL (GET). */
     indexUrl: string;
@@ -267,6 +307,8 @@ interface ApiCredentialsSectionProps {
     /** Values a connector needs: the OpenAPI document, API base, OAuth authorize/token URLs, MCP URL. */
     links?: ApiCredentialEndpointLink[];
     csrfToken?: string;
+    /** Replaces the built-in `fetch` for every credential request; `csrfToken` is then the app's to send. */
+    request?: ApiCredentialRequest;
     onSuccess?: (message: string) => void;
     onError?: (field: string, message: string) => void;
 }
@@ -279,8 +321,8 @@ interface ApiCredentialsSectionProps {
  * in this component's memory; afterwards only the lists are reloaded, so it is
  * never part of page props or browser history.
  */
-declare function ApiCredentialsSection({ indexUrl, components, links, csrfToken, onSuccess, onError }: ApiCredentialsSectionProps): React.JSX.Element;
+declare function ApiCredentialsSection({ indexUrl, components, links, csrfToken, request, onSuccess, onError }: ApiCredentialsSectionProps): React.JSX.Element;
 /** PT4H → "4 hours", P30D → "30 days", P1Y → "1 year". Unknown shapes are shown as given. */
 declare function describeDuration(spec: string): string;
 
-export { type ApiCredentialApp, type ApiCredentialEndpointLink, type ApiCredentialIndex, type ApiCredentialScope, type ApiCredentialToken, ApiCredentialsSection, type ApiCredentialsSectionProps, type AuthButtonComponent, type AuthButtonComponentInput, type AuthButtonComponentProps, type AuthButtonSize, type AuthButtonVariant, type AuthComponentInput, type AuthComponentOverrides, type AuthComponentSet, type AuthComponentSuperset, type AuthComponents, type AuthContainerComponentProps, type AuthEndpointConfig, type AuthInputComponentProps, type AuthJsonResponse, type AuthLabelComponentProps, type AuthSignupField, type AuthSignupValues, type AuthValidationErrors, ChangePasswordForm, type IssuedApiCredential, LoginForm, type LoginFormProps, type LoginRememberMeCheckboxProps, type Passkey, PasskeyLoginButton, PasskeySection, PasswordResetRequestForm, type RelyingApplication, ResetPasswordForm, SignupForm, TwoFactorForm, arrayBufferToBase64url, authenticateWithPasskey, base64urlToArrayBuffer, describeDuration, getCsrfToken, getDefaultPasskeyName, isAbortError, isConditionalMediationAvailable, registerPasskey, relyingApplicationsFrom, safeApplicationHref };
+export { type ApiCredentialApp, type ApiCredentialEndpointLink, type ApiCredentialIndex, type ApiCredentialRequest, type ApiCredentialRequestResult, type ApiCredentialScope, type ApiCredentialToken, ApiCredentialsSection, type ApiCredentialsSectionProps, type AuthButtonComponent, type AuthButtonComponentInput, type AuthButtonComponentProps, type AuthButtonSize, type AuthButtonVariant, type AuthCheckboxComponentProps, type AuthComponentInput, type AuthComponentOverrides, type AuthComponentSet, type AuthComponentSuperset, type AuthComponents, type AuthContainerComponentProps, type AuthEndpointConfig, type AuthInputComponentProps, type AuthJsonResponse, type AuthLabelComponentProps, type AuthRadioGroupComponentProps, type AuthRadioGroupOption, type AuthSignupField, type AuthSignupValues, type AuthTextareaComponentProps, type AuthValidationErrors, ChangePasswordForm, type IssuedApiCredential, LoginForm, type LoginFormProps, type LoginRememberMeCheckboxProps, type Passkey, PasskeyLoginButton, PasskeySection, PasswordResetRequestForm, type RelyingApplication, ResetPasswordForm, SignupForm, TwoFactorForm, arrayBufferToBase64url, authenticateWithPasskey, base64urlToArrayBuffer, describeDuration, getCsrfToken, getDefaultPasskeyName, isAbortError, isConditionalMediationAvailable, registerPasskey, relyingApplicationsFrom, safeApplicationHref };

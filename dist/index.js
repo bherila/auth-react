@@ -946,7 +946,7 @@ function relyingApplicationsFrom(value) {
 // src/api-credentials-section.tsx
 import * as React5 from "react";
 import { Fragment, jsx as jsx4, jsxs as jsxs4 } from "react/jsx-runtime";
-function ApiCredentialsSection({ indexUrl, components, links = [], csrfToken, onSuccess, onError }) {
+function ApiCredentialsSection({ indexUrl, components, links = [], csrfToken, request, onSuccess, onError }) {
   const { Card, CardContent, CardDescription, CardHeader, CardTitle } = resolveAuthComponents(components);
   const [index, setIndex] = React5.useState(null);
   const [issued, setIssued] = React5.useState([]);
@@ -960,13 +960,13 @@ function ApiCredentialsSection({ indexUrl, components, links = [], csrfToken, on
   const onErrorRef = React5.useRef(onError);
   onErrorRef.current = onError;
   const generation = React5.useRef(0);
-  const context = React5.useRef({ indexUrl, csrfToken });
-  context.current = { indexUrl, csrfToken };
+  const context = React5.useRef({ indexUrl, csrfToken, request });
+  context.current = { indexUrl, csrfToken, request };
   const reload = React5.useCallback(async () => {
     generation.current += 1;
     const mine = generation.current;
-    const { indexUrl: url, csrfToken: token } = context.current;
-    const result = await credentialRequest("GET", url, void 0, token);
+    const { indexUrl: url, csrfToken: token, request: send } = context.current;
+    const result = await credentialRequest("GET", url, void 0, token, send);
     if (mine !== generation.current) {
       return;
     }
@@ -987,7 +987,7 @@ function ApiCredentialsSection({ indexUrl, components, links = [], csrfToken, on
       (current) => current === null ? current : list === "tokens" ? { ...current, tokens: current.tokens.filter((token) => token.id !== id) } : { ...current, apps: current.apps.filter((app) => app.id !== id) }
     );
   }, []);
-  const shared = { components, csrfToken, onError, onSuccess, removeLocally };
+  const shared = { components, csrfToken, request, onError, onSuccess, removeLocally };
   return /* @__PURE__ */ jsxs4(Card, { children: [
     /* @__PURE__ */ jsxs4(CardHeader, { children: [
       /* @__PURE__ */ jsx4(CardTitle, { children: "API access" }),
@@ -1020,8 +1020,8 @@ function ApiCredentialsSection({ indexUrl, components, links = [], csrfToken, on
     ] }) })
   ] });
 }
-function TokenSection({ index, components, csrfToken, onIssued, reload, onSuccess, onError, removeLocally }) {
-  const { Button, Input, Label } = resolveAuthComponents(components);
+function TokenSection({ index, components, csrfToken, request, onIssued, reload, onSuccess, onError, removeLocally }) {
+  const { Button, Input, Label, RadioGroup } = resolveAuthComponents(components);
   const [name, setName] = React5.useState("");
   const [scopes, setScopes] = React5.useState([]);
   const [lifetime, setLifetime] = React5.useState(index.token_lifetimes[0] ?? "");
@@ -1033,7 +1033,7 @@ function TokenSection({ index, components, csrfToken, onIssued, reload, onSucces
       return;
     }
     setBusy(true);
-    const result = await credentialRequest("POST", index.issue_token_href, { name, scopes, lifetime }, csrfToken);
+    const result = await credentialRequest("POST", index.issue_token_href, { name, scopes, lifetime }, csrfToken, request);
     setBusy(false);
     if (!result.ok) {
       setError(result.message);
@@ -1053,7 +1053,7 @@ function TokenSection({ index, components, csrfToken, onIssued, reload, onSucces
       return;
     }
     setPending((current) => [...current, token.id]);
-    const result = await credentialRequest("DELETE", token.revoke_href, void 0, csrfToken);
+    const result = await credentialRequest("DELETE", token.revoke_href, void 0, csrfToken, request);
     if (!result.ok) {
       setPending((current) => current.filter((id) => id !== token.id));
       setError(result.message);
@@ -1073,10 +1073,18 @@ function TokenSection({ index, components, csrfToken, onIssued, reload, onSucces
         /* @__PURE__ */ jsx4(Label, { htmlFor: "api-token-name", children: "Token name" }),
         /* @__PURE__ */ jsx4(Input, { id: "api-token-name", value: name, maxLength: 120, onChange: (event) => setName(event.target.value) })
       ] }),
-      /* @__PURE__ */ jsx4(ScopePicker, { idPrefix: "api-token-scope", scopes: index.scopes, selected: scopes, onChange: setScopes }),
+      /* @__PURE__ */ jsx4(ScopePicker, { idPrefix: "api-token-scope", scopes: index.scopes, selected: scopes, onChange: setScopes, components }),
       /* @__PURE__ */ jsxs4("fieldset", { style: { display: "grid", gap: "0.25rem", border: 0, padding: 0 }, children: [
         /* @__PURE__ */ jsx4("legend", { children: "Expires after" }),
-        index.token_lifetimes.map((spec) => /* @__PURE__ */ jsxs4("label", { children: [
+        RadioGroup ? /* @__PURE__ */ jsx4(
+          RadioGroup,
+          {
+            name: "api-token-lifetime",
+            value: lifetime,
+            onValueChange: setLifetime,
+            options: index.token_lifetimes.map((spec) => ({ value: spec, label: describeDuration(spec) }))
+          }
+        ) : index.token_lifetimes.map((spec) => /* @__PURE__ */ jsxs4("label", { children: [
           /* @__PURE__ */ jsx4("input", { type: "radio", name: "api-token-lifetime", checked: lifetime === spec, onChange: () => setLifetime(spec) }),
           " ",
           describeDuration(spec)
@@ -1098,8 +1106,8 @@ function TokenSection({ index, components, csrfToken, onIssued, reload, onSucces
     ] }, token.id)) })
   ] });
 }
-function AppSection({ index, components, csrfToken, onIssued, reload, onSuccess, onError, removeLocally }) {
-  const { Button, Input, Label } = resolveAuthComponents(components);
+function AppSection({ index, components, csrfToken, request, onIssued, reload, onSuccess, onError, removeLocally }) {
+  const { Button, Input, Label, Textarea, RadioGroup } = resolveAuthComponents(components);
   const [name, setName] = React5.useState("");
   const [redirects, setRedirects] = React5.useState("");
   const [confidential, setConfidential] = React5.useState(true);
@@ -1117,7 +1125,8 @@ function AppSection({ index, components, csrfToken, onIssued, reload, onSuccess,
       "POST",
       index.register_app_href,
       { name, redirect_uris: redirectUris, confidential, scopes },
-      csrfToken
+      csrfToken,
+      request
     );
     setBusy(false);
     if (!result.ok) {
@@ -1139,7 +1148,7 @@ function AppSection({ index, components, csrfToken, onIssued, reload, onSuccess,
       return;
     }
     setPending((current) => [...current, app.id]);
-    const result = await credentialRequest("DELETE", app.delete_href, void 0, csrfToken);
+    const result = await credentialRequest("DELETE", app.delete_href, void 0, csrfToken, request);
     if (!result.ok) {
       setPending((current) => current.filter((id) => id !== app.id));
       setError(result.message);
@@ -1161,20 +1170,33 @@ function AppSection({ index, components, csrfToken, onIssued, reload, onSuccess,
       ] }),
       /* @__PURE__ */ jsxs4("div", { style: { display: "grid", gap: "0.25rem" }, children: [
         /* @__PURE__ */ jsx4(Label, { htmlFor: "oauth-app-redirects", children: "Redirect URIs (one per line)" }),
-        /* @__PURE__ */ jsx4("textarea", { id: "oauth-app-redirects", rows: 3, value: redirects, onChange: (event) => setRedirects(event.target.value) })
+        Textarea ? /* @__PURE__ */ jsx4(Textarea, { id: "oauth-app-redirects", rows: 3, value: redirects, onChange: (event) => setRedirects(event.target.value) }) : /* @__PURE__ */ jsx4("textarea", { id: "oauth-app-redirects", rows: 3, value: redirects, onChange: (event) => setRedirects(event.target.value) })
       ] }),
       /* @__PURE__ */ jsxs4("fieldset", { style: { display: "grid", gap: "0.25rem", border: 0, padding: 0 }, children: [
         /* @__PURE__ */ jsx4("legend", { children: "Client type" }),
-        /* @__PURE__ */ jsxs4("label", { children: [
-          /* @__PURE__ */ jsx4("input", { type: "radio", name: "oauth-app-type", checked: confidential, onChange: () => setConfidential(true) }),
-          " Confidential: the app keeps a client secret on its server"
-        ] }),
-        /* @__PURE__ */ jsxs4("label", { children: [
-          /* @__PURE__ */ jsx4("input", { type: "radio", name: "oauth-app-type", checked: !confidential, onChange: () => setConfidential(false) }),
-          " Public: no secret, PKCE only"
+        RadioGroup ? /* @__PURE__ */ jsx4(
+          RadioGroup,
+          {
+            name: "oauth-app-type",
+            value: confidential ? "confidential" : "public",
+            onValueChange: (value) => setConfidential(value === "confidential"),
+            options: [
+              { value: "confidential", label: "Confidential: the app keeps a client secret on its server" },
+              { value: "public", label: "Public: no secret, PKCE only" }
+            ]
+          }
+        ) : /* @__PURE__ */ jsxs4(Fragment, { children: [
+          /* @__PURE__ */ jsxs4("label", { children: [
+            /* @__PURE__ */ jsx4("input", { type: "radio", name: "oauth-app-type", checked: confidential, onChange: () => setConfidential(true) }),
+            " Confidential: the app keeps a client secret on its server"
+          ] }),
+          /* @__PURE__ */ jsxs4("label", { children: [
+            /* @__PURE__ */ jsx4("input", { type: "radio", name: "oauth-app-type", checked: !confidential, onChange: () => setConfidential(false) }),
+            " Public: no secret, PKCE only"
+          ] })
         ] })
       ] }),
-      /* @__PURE__ */ jsx4(ScopePicker, { idPrefix: "oauth-app-scope", scopes: index.scopes, selected: scopes, onChange: setScopes }),
+      /* @__PURE__ */ jsx4(ScopePicker, { idPrefix: "oauth-app-scope", scopes: index.scopes, selected: scopes, onChange: setScopes, components }),
       /* @__PURE__ */ jsx4("div", { children: /* @__PURE__ */ jsx4(Button, { type: "submit", disabled: busy || name.trim() === "" || redirectUris.length === 0 || scopes.length === 0, children: "Register OAuth app" }) })
     ] }),
     error !== null && /* @__PURE__ */ jsx4("p", { role: "alert", children: error }),
@@ -1198,22 +1220,17 @@ function ScopePicker({
   idPrefix,
   scopes,
   selected,
-  onChange
+  onChange,
+  components
 }) {
+  const { Checkbox } = resolveAuthComponents(components);
+  const toggle = (scopeId, checked) => onChange(checked ? [...selected, scopeId] : selected.filter((value) => value !== scopeId));
   return /* @__PURE__ */ jsxs4("fieldset", { style: { display: "grid", gap: "0.25rem", border: 0, padding: 0, minWidth: 0 }, children: [
     /* @__PURE__ */ jsx4("legend", { children: "Permissions" }),
     scopes.map((scope) => {
       const id = `${idPrefix}-${scope.id}`;
       return /* @__PURE__ */ jsxs4("label", { htmlFor: id, style: { overflowWrap: "anywhere" }, children: [
-        /* @__PURE__ */ jsx4(
-          "input",
-          {
-            id,
-            type: "checkbox",
-            checked: selected.includes(scope.id),
-            onChange: (event) => onChange(event.target.checked ? [...selected, scope.id] : selected.filter((value) => value !== scope.id))
-          }
-        ),
+        Checkbox ? /* @__PURE__ */ jsx4(Checkbox, { id, checked: selected.includes(scope.id), onCheckedChange: (checked) => toggle(scope.id, checked) }) : /* @__PURE__ */ jsx4("input", { id, type: "checkbox", checked: selected.includes(scope.id), onChange: (event) => toggle(scope.id, event.target.checked) }),
         " ",
         /* @__PURE__ */ jsx4("code", { children: scope.id }),
         " ",
@@ -1283,7 +1300,16 @@ function describeDuration(spec) {
   const parts = match.slice(1).map((value, position) => value ? `${Number(value)} ${units[position]}${Number(value) === 1 ? "" : "s"}` : null).filter((part) => part !== null);
   return parts.length > 0 ? parts.join(" ") : spec;
 }
-async function credentialRequest(method, url, body, csrfToken) {
+async function credentialRequest(method, url, body, csrfToken, request) {
+  if (request !== void 0) {
+    let result;
+    try {
+      result = await request(method, url, body);
+    } catch {
+      return { ok: false, status: 0, message: "The server could not be reached. Check the connection and try again." };
+    }
+    return result.ok ? { ok: true, status: result.status, data: unwrapData(result.payload) } : result;
+  }
   let response;
   try {
     response = await fetch(url, {
@@ -1301,10 +1327,12 @@ async function credentialRequest(method, url, body, csrfToken) {
   }
   const payload = await response.json().catch(() => null);
   if (response.ok) {
-    const data = typeof payload === "object" && payload !== null && "data" in payload ? payload.data : payload;
-    return { ok: true, status: response.status, data };
+    return { ok: true, status: response.status, data: unwrapData(payload) };
   }
   return { ok: false, status: response.status, message: refusalMessage(response.status, payload) };
+}
+function unwrapData(payload) {
+  return typeof payload === "object" && payload !== null && "data" in payload ? payload.data : payload;
 }
 function refusalMessage(status, payload) {
   if (status === 401 || status === 419) {
