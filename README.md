@@ -242,6 +242,30 @@ It talks to the auth package's credential service (`oauth_server.credentials`) t
 />
 ```
 
+### Grouped scope picker
+
+When the index carries scope groups, both forms replace the flat checkbox list with a grouped picker. Every key is optional, and everything here is presentation: the credential stores exactly the scope ids that end up ticked, and the form posts `scopes` as explicit ids only (never a group or preset id).
+
+| Index key | Shape | Used by |
+| --- | --- | --- |
+| `scope_groups` | `[{ id, label, description \| null, sensitive, scopes: [ids] }]` | OAuth-app form; token form unless `token_scope_groups` is present |
+| `scope_presets` | `[{ id, label, description, scopes: [ids] }]` | likewise, with `token_scope_presets` |
+| `scope_implications` | `{ "billing:write": ["billing:read"] }` | likewise, with `token_scope_implications` |
+| `token_scopes` | `[{ id, description }]` | A narrower scope list for the token form (default: `scopes`) |
+| `token_scope_groups`, `token_scope_presets`, `token_scope_implications` | as above | Token form |
+| `token_connection_scopes`, `connection_token_lifetimes` | `[{ id, description }]`, ISO-8601 durations | Token form only: connection scopes are listed after the token scopes, and a token carrying one is offered `connection_token_lifetimes` instead of `token_lifetimes` |
+
+- **No groups: nothing changes.** The picker renders the flat list exactly as before (no presets, no summary).
+- **Presets** are a row of buttons. Clicking one replaces the selection with exactly that preset's scopes. `aria-pressed` is true only while the selection equals the preset exactly; a line below shows its description, or "Custom selection" otherwise. There is no "select all".
+- **Groups** render as one `<fieldset>` each, in an auto-fill grid (`minmax(min(100%, 300px), 1fr)`, so phones get one column) with 44px touch targets. Scopes the groups do not name collect in a final "Other permissions" group. A preset that names a scope the surface does not offer is not shown.
+- **Sensitive groups** render as one parent checkbox (checked when all its scopes are ticked, `indeterminate` and `aria-checked="mixed"` when some are), a "Sensitive" badge and the group description as a warning. Clicking the parent ticks or clears every scope in the group. An "Adjust individual ... permissions" button (`aria-expanded`) reveals the group's scopes as ordinary checkboxes.
+- **Implications** are a picker-only cascade. Ticking a scope also ticks everything it needs (transitively); unticking a scope also unticks every scope that needs it. Presets and the sensitive parent apply the cascade too. A scope that a ticked scope needs shows a muted "needed by ..." note. The server never infers one scope from another, so existing grants do not widen.
+- **Summary:** "This credential will request N permissions:" followed by the explicit ids.
+
+New optional `components` for the picker, each falling back to a native element: `Badge` (the "Sensitive" label) and `Alert` (the sensitive-group warning). Presets and the disclosure use your `Button` (`variant="default"`/`"outline"`/`"ghost"`, `aria-pressed`, `aria-expanded`). Scope checkboxes use `Checkbox` when injected; the sensitive parent is always a native `<input type="checkbox">`, because it needs `indeterminate` and `aria-checked="mixed"`.
+
+`ScopePicker`, the group and preset types, and the pure helpers in `scope-selection` (`closeImplications`, `withScopes`, `withoutScopes`, ...) are exported for apps that build their own forms.
+
 ## Endpoint Defaults
 
 Auth forms default to the Laravel package API routes where the Laravel package owns the endpoint:

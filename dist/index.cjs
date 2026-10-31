@@ -37,19 +37,27 @@ __export(index_exports, {
   PasskeySection: () => PasskeySection,
   PasswordResetRequestForm: () => PasswordResetRequestForm,
   ResetPasswordForm: () => ResetPasswordForm,
+  ScopePicker: () => ScopePicker,
   SignupForm: () => SignupForm,
   TwoFactorForm: () => TwoFactorForm,
   arrayBufferToBase64url: () => arrayBufferToBase64url,
   authenticateWithPasskey: () => authenticateWithPasskey,
   base64urlToArrayBuffer: () => base64urlToArrayBuffer,
+  closeImplications: () => closeImplications,
   describeDuration: () => describeDuration,
   getCsrfToken: () => getCsrfToken,
   getDefaultPasskeyName: () => getDefaultPasskeyName,
+  inCatalogOrder: () => inCatalogOrder,
   isAbortError: () => isAbortError,
   isConditionalMediationAvailable: () => isConditionalMediationAvailable,
+  neededBy: () => neededBy,
   registerPasskey: () => registerPasskey,
   relyingApplicationsFrom: () => relyingApplicationsFrom,
-  safeApplicationHref: () => safeApplicationHref
+  restrictImplications: () => restrictImplications,
+  safeApplicationHref: () => safeApplicationHref,
+  sameSelection: () => sameSelection,
+  withScopes: () => withScopes,
+  withoutScopes: () => withoutScopes
 });
 module.exports = __toCommonJS(index_exports);
 
@@ -999,25 +1007,314 @@ function relyingApplicationsFrom(value) {
 }
 
 // src/api-credentials-section.tsx
+var React6 = __toESM(require("react"), 1);
+
+// src/scope-picker.tsx
+var import_lucide_react3 = require("lucide-react");
 var React5 = __toESM(require("react"), 1);
+
+// src/scope-selection.ts
+function closeImplications(implications) {
+  const closed = {};
+  for (const key of Object.keys(implications)) {
+    const seen = /* @__PURE__ */ new Set();
+    const walk = (id) => {
+      for (const needed of implications[id] ?? []) {
+        if (needed !== key && !seen.has(needed)) {
+          seen.add(needed);
+          walk(needed);
+        }
+      }
+    };
+    walk(key);
+    if (seen.size > 0) {
+      closed[key] = [...seen];
+    }
+  }
+  return closed;
+}
+function restrictImplications(implications, offered) {
+  const result = {};
+  for (const [key, needed] of Object.entries(implications ?? {})) {
+    if (!offered.has(key) || !Array.isArray(needed)) {
+      continue;
+    }
+    const kept = needed.filter((id) => offered.has(id));
+    if (kept.length > 0) {
+      result[key] = kept;
+    }
+  }
+  return result;
+}
+function inCatalogOrder(ids, catalog) {
+  const wanted = new Set(ids);
+  return catalog.filter((id) => wanted.has(id));
+}
+function withScopes(selected, ids, closed) {
+  const next = new Set(selected);
+  for (const id of ids) {
+    next.add(id);
+    for (const needed of closed[id] ?? []) {
+      next.add(needed);
+    }
+  }
+  return next;
+}
+function withoutScopes(selected, ids, closed) {
+  const removed = new Set(ids);
+  const next = new Set(selected);
+  for (const id of ids) {
+    next.delete(id);
+  }
+  for (const [scope, needed] of Object.entries(closed)) {
+    if (needed.some((id) => removed.has(id))) {
+      next.delete(scope);
+    }
+  }
+  return next;
+}
+function neededBy(id, selected, closed) {
+  return selected.filter((scope) => scope !== id && (closed[scope] ?? []).includes(id));
+}
+function sameSelection(a, b) {
+  if (a.length !== b.length) {
+    return false;
+  }
+  const set = new Set(a);
+  return b.every((id) => set.has(id));
+}
+
+// src/scope-picker.tsx
 var import_jsx_runtime4 = require("react/jsx-runtime");
+function resolveGroups(scopes, groups) {
+  if (!Array.isArray(groups) || groups.length === 0) {
+    return null;
+  }
+  const byId = new Map(scopes.map((scope) => [scope.id, scope]));
+  const placed = /* @__PURE__ */ new Set();
+  const resolved = [];
+  for (const group of groups) {
+    const members = [];
+    for (const id of group.scopes ?? []) {
+      const scope = byId.get(id);
+      if (scope && !placed.has(id)) {
+        placed.add(id);
+        members.push(scope);
+      }
+    }
+    if (members.length > 0) {
+      resolved.push({ id: group.id, label: group.label, description: group.description ?? null, sensitive: group.sensitive === true, scopes: members });
+    }
+  }
+  const rest = scopes.filter((scope) => !placed.has(scope.id));
+  if (rest.length > 0) {
+    resolved.push({ id: "other", label: "Other permissions", description: null, sensitive: false, scopes: rest });
+  }
+  return resolved.length > 0 ? resolved : null;
+}
+function DefaultBadge(props) {
+  return /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("span", { ...props });
+}
+var touchRow = {
+  display: "flex",
+  gap: "0.625rem",
+  alignItems: "flex-start",
+  minHeight: 44,
+  padding: "0.5rem 0",
+  boxSizing: "border-box",
+  overflowWrap: "anywhere"
+};
+var mutedStyle = { opacity: 0.7 };
+var gridStyle = {
+  display: "grid",
+  gridTemplateColumns: "repeat(auto-fill, minmax(min(100%, 300px), 1fr))",
+  gap: "1rem",
+  alignItems: "start"
+};
+var boxStyle = { margin: 0, minWidth: 0, border: "1px solid rgba(128, 128, 128, 0.35)", borderRadius: 10, padding: "0.25rem 1rem 0.75rem" };
+function ScopePicker({ idPrefix, scopes, groups, presets, implications, selected, onChange, components }) {
+  const { Checkbox, Button, Badge, Alert } = resolveAuthComponents(components);
+  const [open, setOpen] = React5.useState({});
+  const catalog = React5.useMemo(() => scopes.map((scope) => scope.id), [scopes]);
+  const closed = React5.useMemo(() => closeImplications(restrictImplications(implications, new Set(catalog))), [implications, catalog]);
+  const layout = React5.useMemo(() => resolveGroups(scopes, groups), [scopes, groups]);
+  const offeredPresets = React5.useMemo(
+    () => (presets ?? []).filter((preset) => preset.scopes.length > 0 && preset.scopes.every((id) => catalog.includes(id))),
+    [presets, catalog]
+  );
+  const cascades = Object.keys(closed).length > 0;
+  const chosen = new Set(selected);
+  const commit = (next) => onChange(inCatalogOrder(next, catalog));
+  const toggle = (id, checked) => {
+    if (layout === null && !cascades) {
+      onChange(checked ? [...selected, id] : selected.filter((value) => value !== id));
+      return;
+    }
+    commit(checked ? withScopes(selected, [id], closed) : withoutScopes(selected, [id], closed));
+  };
+  const renderRow = (scope, grouped) => {
+    const id = `${idPrefix}-${scope.id}`;
+    const needers = neededBy(scope.id, selected, closed);
+    const noteId = `${id}-needed`;
+    const row = /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("label", { htmlFor: id, style: grouped ? { ...touchRow, cursor: "pointer" } : { overflowWrap: "anywhere" }, children: [
+      Checkbox ? /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(Checkbox, { id, checked: chosen.has(scope.id), onCheckedChange: (checked) => toggle(scope.id, checked) }) : /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(
+        "input",
+        {
+          id,
+          type: "checkbox",
+          checked: chosen.has(scope.id),
+          "aria-describedby": needers.length > 0 ? noteId : void 0,
+          onChange: (event) => toggle(scope.id, event.target.checked),
+          style: grouped ? { flex: "none", width: 16, height: 16, margin: "2px 0 0" } : void 0
+        }
+      ),
+      " ",
+      /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("span", { style: { minWidth: 0, overflowWrap: "anywhere" }, children: [
+        /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("code", { children: scope.id }),
+        " ",
+        /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("span", { style: mutedStyle, children: scope.description })
+      ] })
+    ] }, scope.id);
+    if (needers.length === 0) {
+      return row;
+    }
+    return /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("div", { style: { minWidth: 0 }, children: [
+      row,
+      /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("small", { id: noteId, style: { ...mutedStyle, display: "block", paddingLeft: grouped ? 26 : 0, overflowWrap: "anywhere" }, children: [
+        "needed by ",
+        needers.join(", ")
+      ] })
+    ] }, scope.id);
+  };
+  if (layout === null) {
+    return /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("fieldset", { style: { display: "grid", gap: "0.25rem", border: 0, padding: 0, minWidth: 0 }, children: [
+      /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("legend", { children: "Permissions" }),
+      scopes.map((scope) => renderRow(scope, false))
+    ] });
+  }
+  const pressed = offeredPresets.find((preset) => sameSelection(selected, preset.scopes));
+  const plain = layout.filter((group) => !group.sensitive);
+  const sensitive = layout.filter((group) => group.sensitive);
+  const Chip = Badge ?? DefaultBadge;
+  return /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("div", { style: { display: "grid", gap: "1rem", minWidth: 0 }, children: [
+    /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("div", { style: { display: "grid", gap: "0.25rem" }, children: [
+      /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("strong", { children: "Permissions" }),
+      offeredPresets.length > 0 && /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("span", { style: mutedStyle, children: "Start from a preset, then adjust any permission below. The credential stores exactly the permissions you tick." })
+    ] }),
+    offeredPresets.length > 0 && /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("div", { style: { display: "grid", gap: "0.625rem" }, children: [
+      /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("div", { role: "group", "aria-label": "Presets", style: { display: "flex", flexWrap: "wrap", gap: "0.5rem" }, children: offeredPresets.map((preset) => {
+        const isPressed = pressed?.id === preset.id;
+        return /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(
+          Button,
+          {
+            type: "button",
+            variant: isPressed ? "default" : "outline",
+            "aria-pressed": isPressed,
+            style: { minHeight: 44, maxWidth: "100%", overflowWrap: "anywhere", whiteSpace: "normal", textAlign: "left" },
+            onClick: () => commit(withScopes([], preset.scopes, closed)),
+            children: preset.label
+          },
+          preset.id
+        );
+      }) }),
+      /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("p", { "aria-live": "polite", style: { margin: 0, ...mutedStyle, overflowWrap: "anywhere" }, children: pressed ? pressed.description : "Custom selection. Pick a preset to replace it, or keep adjusting below." })
+    ] }),
+    plain.length > 0 && /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("div", { style: gridStyle, children: plain.map((group) => /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("fieldset", { style: { ...boxStyle, display: "grid", gridTemplateColumns: "minmax(0, 1fr)" }, children: [
+      /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("legend", { style: { padding: "0 0.375rem", fontWeight: 600, overflowWrap: "anywhere" }, children: group.label }),
+      group.scopes.map((scope) => renderRow(scope, true))
+    ] }, group.id)) }),
+    sensitive.map((group) => {
+      const ids = group.scopes.map((scope) => scope.id);
+      const count = ids.filter((id) => chosen.has(id)).length;
+      const state = count === 0 ? "none" : count === ids.length ? "all" : "some";
+      const parentId = `${idPrefix}-group-${group.id}`;
+      const listId = `${parentId}-scopes`;
+      const isOpen = open[group.id] === true;
+      const warning = group.description !== null && group.description !== "" ? group.description : null;
+      return /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("fieldset", { style: { ...boxStyle, display: "grid", gap: "0.375rem", paddingBottom: "0.875rem" }, children: [
+        /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("legend", { style: { padding: "0 0.375rem", fontWeight: 600, display: "flex", alignItems: "center", gap: "0.5rem" }, children: [
+          /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("span", { style: { overflowWrap: "anywhere" }, children: group.label }),
+          /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(Chip, { style: { fontSize: 12, fontWeight: 500, border: "1px solid currentColor", borderRadius: 999, padding: "3px 8px", lineHeight: 1 }, children: "Sensitive" })
+        ] }),
+        warning !== null && (() => {
+          const content = /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)(import_jsx_runtime4.Fragment, { children: [
+            /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(import_lucide_react3.TriangleAlert, { "aria-hidden": "true", size: 16, style: { flex: "none", marginTop: 2 } }),
+            /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("span", { style: { minWidth: 0, overflowWrap: "anywhere" }, children: warning })
+          ] });
+          const style = { margin: "0.25rem 0 0", display: "flex", gap: "0.5rem", alignItems: "flex-start" };
+          return Alert ? /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(Alert, { style, children: content }) : /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("p", { style: { ...style, color: "#b45309" }, children: content });
+        })(),
+        /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("label", { htmlFor: parentId, style: { ...touchRow, cursor: "pointer" }, children: [
+          /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(
+            "input",
+            {
+              id: parentId,
+              type: "checkbox",
+              checked: state === "all",
+              "aria-checked": state === "some" ? "mixed" : state === "all",
+              ref: (element) => {
+                if (element) {
+                  element.indeterminate = state === "some";
+                }
+              },
+              onChange: () => commit(state === "all" ? withoutScopes(selected, ids, closed) : withScopes(selected, ids, closed)),
+              style: { flex: "none", width: 16, height: 16, margin: "2px 0 0" }
+            }
+          ),
+          " ",
+          /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("span", { style: { minWidth: 0, overflowWrap: "anywhere" }, children: [
+            /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("strong", { children: group.label }),
+            " ",
+            /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("span", { style: mutedStyle, children: state === "all" ? `All ${ids.length} ${group.label} permissions are selected.` : state === "some" ? `${count} of ${ids.length} ${group.label} permissions are selected.` : `Selects all ${ids.length} ${group.label} permissions.` })
+          ] })
+        ] }),
+        /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("div", { children: /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)(
+          Button,
+          {
+            type: "button",
+            variant: "ghost",
+            "aria-expanded": isOpen,
+            "aria-controls": listId,
+            style: { minHeight: 44, whiteSpace: "normal", textAlign: "left" },
+            onClick: () => setOpen((current) => ({ ...current, [group.id]: !isOpen })),
+            children: [
+              /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(import_lucide_react3.ChevronRight, { "aria-hidden": "true", size: 16, style: { flex: "none", transition: "transform 120ms", transform: isOpen ? "rotate(90deg)" : "none" } }),
+              isOpen ? "Hide" : "Adjust",
+              " individual ",
+              group.label,
+              " permissions"
+            ]
+          }
+        ) }),
+        isOpen && /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("div", { id: listId, style: { ...gridStyle, columnGap: "1.5rem", gap: "0 1.5rem", paddingLeft: "1.5rem", marginLeft: 7, borderLeft: "2px solid rgba(128, 128, 128, 0.35)" }, children: group.scopes.map((scope) => renderRow(scope, true)) })
+      ] }, group.id);
+    }),
+    /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("div", { style: { borderTop: "1px solid rgba(128, 128, 128, 0.35)", paddingTop: "0.875rem", display: "grid", gap: "0.5rem" }, children: [
+      /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("p", { style: { margin: 0, fontWeight: 500 }, role: "status", children: selected.length === 0 ? "No permissions selected." : `This credential will request ${selected.length} ${selected.length === 1 ? "permission" : "permissions"}:` }),
+      selected.length > 0 && /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("p", { style: { margin: 0, display: "flex", flexWrap: "wrap", gap: "0.375rem" }, children: selected.map((id) => /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("code", { style: { overflowWrap: "anywhere" }, children: id }, id)) })
+    ] })
+  ] });
+}
+
+// src/api-credentials-section.tsx
+var import_jsx_runtime5 = require("react/jsx-runtime");
 function ApiCredentialsSection({ indexUrl, components, links = [], csrfToken, request, onSuccess, onError }) {
   const { Card, CardContent, CardDescription, CardHeader, CardTitle } = resolveAuthComponents(components);
-  const [index, setIndex] = React5.useState(null);
-  const [issued, setIssued] = React5.useState([]);
-  const issuedKey = React5.useRef(0);
-  const addIssued = React5.useCallback((credential) => {
+  const [index, setIndex] = React6.useState(null);
+  const [issued, setIssued] = React6.useState([]);
+  const issuedKey = React6.useRef(0);
+  const addIssued = React6.useCallback((credential) => {
     issuedKey.current += 1;
     const key = issuedKey.current;
     setIssued((current) => [...current, { key, credential }]);
   }, []);
-  const [loadError, setLoadError] = React5.useState(null);
-  const onErrorRef = React5.useRef(onError);
+  const [loadError, setLoadError] = React6.useState(null);
+  const onErrorRef = React6.useRef(onError);
   onErrorRef.current = onError;
-  const generation = React5.useRef(0);
-  const context = React5.useRef({ indexUrl, csrfToken, request });
+  const generation = React6.useRef(0);
+  const context = React6.useRef({ indexUrl, csrfToken, request });
   context.current = { indexUrl, csrfToken, request };
-  const reload = React5.useCallback(async () => {
+  const reload = React6.useCallback(async () => {
     generation.current += 1;
     const mine = generation.current;
     const { indexUrl: url, csrfToken: token, request: send } = context.current;
@@ -1033,31 +1330,31 @@ function ApiCredentialsSection({ indexUrl, components, links = [], csrfToken, re
       onErrorRef.current?.("api-credentials", result.message);
     }
   }, []);
-  React5.useEffect(() => {
+  React6.useEffect(() => {
     setIndex(null);
     void reload();
   }, [indexUrl, csrfToken, reload]);
-  const removeLocally = React5.useCallback((list, id) => {
+  const removeLocally = React6.useCallback((list, id) => {
     setIndex(
       (current) => current === null ? current : list === "tokens" ? { ...current, tokens: current.tokens.filter((token) => token.id !== id) } : { ...current, apps: current.apps.filter((app) => app.id !== id) }
     );
   }, []);
   const shared = { components, csrfToken, request, onError, onSuccess, removeLocally };
-  return /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)(Card, { children: [
-    /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)(CardHeader, { children: [
-      /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(CardTitle, { children: "API access" }),
-      /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(CardDescription, { children: "Connect apps that use the API. Register an OAuth app for apps that sign you in, or create an API token for apps that ask for a key. Each carries only the permissions you choose, and never more than your own access." })
+  return /* @__PURE__ */ (0, import_jsx_runtime5.jsxs)(Card, { children: [
+    /* @__PURE__ */ (0, import_jsx_runtime5.jsxs)(CardHeader, { children: [
+      /* @__PURE__ */ (0, import_jsx_runtime5.jsx)(CardTitle, { children: "API access" }),
+      /* @__PURE__ */ (0, import_jsx_runtime5.jsx)(CardDescription, { children: "Connect apps that use the API. Register an OAuth app for apps that sign you in, or create an API token for apps that ask for a key. Each carries only the permissions you choose, and never more than your own access." })
     ] }),
-    /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(CardContent, { children: /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("div", { style: { display: "grid", gap: "1.5rem", minWidth: 0 }, children: [
-      links.length > 0 && /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("dl", { style: { display: "grid", gap: "0.5rem", minWidth: 0 }, children: links.map((link) => /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("div", { style: { minWidth: 0 }, children: [
-        /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("dt", { children: link.label }),
-        /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("dd", { style: { margin: 0, overflowWrap: "anywhere" }, children: [
-          /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("code", { children: link.url }),
+    /* @__PURE__ */ (0, import_jsx_runtime5.jsx)(CardContent, { children: /* @__PURE__ */ (0, import_jsx_runtime5.jsxs)("div", { style: { display: "grid", gap: "1.5rem", minWidth: 0 }, children: [
+      links.length > 0 && /* @__PURE__ */ (0, import_jsx_runtime5.jsx)("dl", { style: { display: "grid", gap: "0.5rem", minWidth: 0 }, children: links.map((link) => /* @__PURE__ */ (0, import_jsx_runtime5.jsxs)("div", { style: { minWidth: 0 }, children: [
+        /* @__PURE__ */ (0, import_jsx_runtime5.jsx)("dt", { children: link.label }),
+        /* @__PURE__ */ (0, import_jsx_runtime5.jsxs)("dd", { style: { margin: 0, overflowWrap: "anywhere" }, children: [
+          /* @__PURE__ */ (0, import_jsx_runtime5.jsx)("code", { children: link.url }),
           " ",
-          /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(CopyButton, { text: link.url, label: link.label, components })
+          /* @__PURE__ */ (0, import_jsx_runtime5.jsx)(CopyButton, { text: link.url, label: link.label, components })
         ] })
       ] }, link.label)) }),
-      issued.map(({ key, credential }) => /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(
+      issued.map(({ key, credential }) => /* @__PURE__ */ (0, import_jsx_runtime5.jsx)(
         IssuedNotice,
         {
           issued: credential,
@@ -1066,29 +1363,36 @@ function ApiCredentialsSection({ indexUrl, components, links = [], csrfToken, re
         },
         key
       )),
-      loadError !== null && /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("p", { role: "alert", children: loadError }),
-      index !== null && /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)(import_jsx_runtime4.Fragment, { children: [
-        (index.issue_token_href === null || index.register_app_href === null) && /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("p", { role: "status", children: "Creating new credentials is unavailable right now. You can still revoke existing ones." }),
-        /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(TokenSection, { index, ...shared, onIssued: addIssued, reload }),
-        /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(AppSection, { index, ...shared, onIssued: addIssued, reload })
+      loadError !== null && /* @__PURE__ */ (0, import_jsx_runtime5.jsx)("p", { role: "alert", children: loadError }),
+      index !== null && /* @__PURE__ */ (0, import_jsx_runtime5.jsxs)(import_jsx_runtime5.Fragment, { children: [
+        (index.issue_token_href === null || index.register_app_href === null) && /* @__PURE__ */ (0, import_jsx_runtime5.jsx)("p", { role: "status", children: "Creating new credentials is unavailable right now. You can still revoke existing ones." }),
+        /* @__PURE__ */ (0, import_jsx_runtime5.jsx)(TokenSection, { index, ...shared, onIssued: addIssued, reload }),
+        /* @__PURE__ */ (0, import_jsx_runtime5.jsx)(AppSection, { index, ...shared, onIssued: addIssued, reload })
       ] })
     ] }) })
   ] });
 }
 function TokenSection({ index, components, csrfToken, request, onIssued, reload, onSuccess, onError, removeLocally }) {
   const { Button, Input, Label, RadioGroup } = resolveAuthComponents(components);
-  const [name, setName] = React5.useState("");
-  const [scopes, setScopes] = React5.useState([]);
-  const [lifetime, setLifetime] = React5.useState(index.token_lifetimes[0] ?? "");
-  const [busy, setBusy] = React5.useState(false);
-  const [error, setError] = React5.useState(null);
+  const [name, setName] = React6.useState("");
+  const [scopes, setScopes] = React6.useState([]);
+  const [lifetime, setLifetime] = React6.useState(index.token_lifetimes[0] ?? "");
+  const tokenScopes = React6.useMemo(
+    () => [...index.token_scopes ?? index.scopes, ...index.token_connection_scopes ?? []],
+    [index.token_scopes, index.scopes, index.token_connection_scopes]
+  );
+  const connectionIds = new Set((index.token_connection_scopes ?? []).map((scope) => scope.id));
+  const lifetimes = index.connection_token_lifetimes && index.connection_token_lifetimes.length > 0 && scopes.some((id) => connectionIds.has(id)) ? index.connection_token_lifetimes : index.token_lifetimes;
+  const effectiveLifetime = lifetimes.includes(lifetime) ? lifetime : lifetimes[0] ?? "";
+  const [busy, setBusy] = React6.useState(false);
+  const [error, setError] = React6.useState(null);
   async function create(event) {
     event.preventDefault();
     if (index.issue_token_href === null) {
       return;
     }
     setBusy(true);
-    const result = await credentialRequest("POST", index.issue_token_href, { name, scopes, lifetime }, csrfToken, request);
+    const result = await credentialRequest("POST", index.issue_token_href, { name, scopes, lifetime: effectiveLifetime }, csrfToken, request);
     setBusy(false);
     if (!result.ok) {
       setError(result.message);
@@ -1102,7 +1406,7 @@ function TokenSection({ index, components, csrfToken, request, onIssued, reload,
     onSuccess?.("API token created.");
     await reload();
   }
-  const [pending, setPending] = React5.useState([]);
+  const [pending, setPending] = React6.useState([]);
   async function revoke(token) {
     if (pending.includes(token.id)) {
       return;
@@ -1121,54 +1425,67 @@ function TokenSection({ index, components, csrfToken, request, onIssued, reload,
     await reload();
     setPending((current) => current.filter((id) => id !== token.id));
   }
-  return /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("section", { style: { display: "grid", gap: "0.75rem", minWidth: 0 }, children: [
-    /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("h3", { children: "API tokens" }),
-    index.issue_token_href !== null && /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("form", { onSubmit: create, style: { display: "grid", gap: "0.75rem" }, children: [
-      /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("div", { style: { display: "grid", gap: "0.25rem" }, children: [
-        /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(Label, { htmlFor: "api-token-name", children: "Token name" }),
-        /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(Input, { id: "api-token-name", value: name, maxLength: 120, onChange: (event) => setName(event.target.value) })
+  return /* @__PURE__ */ (0, import_jsx_runtime5.jsxs)("section", { style: { display: "grid", gap: "0.75rem", minWidth: 0 }, children: [
+    /* @__PURE__ */ (0, import_jsx_runtime5.jsx)("h3", { children: "API tokens" }),
+    index.issue_token_href !== null && /* @__PURE__ */ (0, import_jsx_runtime5.jsxs)("form", { onSubmit: create, style: { display: "grid", gap: "0.75rem" }, children: [
+      /* @__PURE__ */ (0, import_jsx_runtime5.jsxs)("div", { style: { display: "grid", gap: "0.25rem" }, children: [
+        /* @__PURE__ */ (0, import_jsx_runtime5.jsx)(Label, { htmlFor: "api-token-name", children: "Token name" }),
+        /* @__PURE__ */ (0, import_jsx_runtime5.jsx)(Input, { id: "api-token-name", value: name, maxLength: 120, onChange: (event) => setName(event.target.value) })
       ] }),
-      /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(ScopePicker, { idPrefix: "api-token-scope", scopes: index.scopes, selected: scopes, onChange: setScopes, components }),
-      /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("fieldset", { style: { display: "grid", gap: "0.25rem", border: 0, padding: 0 }, children: [
-        /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("legend", { children: "Expires after" }),
-        RadioGroup ? /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(
+      /* @__PURE__ */ (0, import_jsx_runtime5.jsx)(
+        ScopePicker,
+        {
+          idPrefix: "api-token-scope",
+          scopes: tokenScopes,
+          groups: index.token_scope_groups ?? index.scope_groups,
+          presets: index.token_scope_presets ?? index.scope_presets,
+          implications: index.token_scope_implications ?? index.scope_implications,
+          selected: scopes,
+          onChange: setScopes,
+          components
+        }
+      ),
+      /* @__PURE__ */ (0, import_jsx_runtime5.jsxs)("fieldset", { style: { display: "grid", gap: "0.25rem", border: 0, padding: 0 }, children: [
+        /* @__PURE__ */ (0, import_jsx_runtime5.jsx)("legend", { children: "Expires after" }),
+        RadioGroup ? /* @__PURE__ */ (0, import_jsx_runtime5.jsx)(
           RadioGroup,
           {
             name: "api-token-lifetime",
-            value: lifetime,
+            value: effectiveLifetime,
             onValueChange: setLifetime,
-            options: index.token_lifetimes.map((spec) => ({ value: spec, label: describeDuration(spec) }))
+            options: lifetimes.map((spec) => ({ value: spec, label: describeDuration(spec) }))
           }
-        ) : index.token_lifetimes.map((spec) => /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("label", { children: [
-          /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("input", { type: "radio", name: "api-token-lifetime", checked: lifetime === spec, onChange: () => setLifetime(spec) }),
+        ) : lifetimes.map((spec) => /* @__PURE__ */ (0, import_jsx_runtime5.jsxs)("label", { children: [
+          /* @__PURE__ */ (0, import_jsx_runtime5.jsx)("input", { type: "radio", name: "api-token-lifetime", checked: effectiveLifetime === spec, onChange: () => setLifetime(spec) }),
           " ",
           describeDuration(spec)
         ] }, spec))
       ] }),
-      /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("div", { children: /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(Button, { type: "submit", disabled: busy || name.trim() === "" || scopes.length === 0 || lifetime === "", children: "Create API token" }) })
+      /* @__PURE__ */ (0, import_jsx_runtime5.jsx)("div", { children: /* @__PURE__ */ (0, import_jsx_runtime5.jsx)(Button, { type: "submit", disabled: busy || name.trim() === "" || scopes.length === 0 || effectiveLifetime === "", children: "Create API token" }) })
     ] }),
-    error !== null && /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("p", { role: "alert", children: error }),
-    /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("ul", { style: { display: "grid", gap: "0.5rem", listStyle: "none", padding: 0, margin: 0, minWidth: 0 }, children: index.tokens.map((token) => /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("li", { style: { minWidth: 0, overflowWrap: "anywhere" }, children: [
-      /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("strong", { children: token.name }),
+    error !== null && /* @__PURE__ */ (0, import_jsx_runtime5.jsx)("p", { role: "alert", children: error }),
+    /* @__PURE__ */ (0, import_jsx_runtime5.jsx)("ul", { style: { display: "grid", gap: "0.5rem", listStyle: "none", padding: 0, margin: 0, minWidth: 0 }, children: index.tokens.map((token) => /* @__PURE__ */ (0, import_jsx_runtime5.jsxs)("li", { style: { minWidth: 0, overflowWrap: "anywhere" }, children: [
+      /* @__PURE__ */ (0, import_jsx_runtime5.jsx)("strong", { children: token.name }),
       " \xB7 ",
       token.scopes.join(", "),
-      token.expires_at !== null && /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)(import_jsx_runtime4.Fragment, { children: [
+      token.connection === true && /* @__PURE__ */ (0, import_jsx_runtime5.jsx)(import_jsx_runtime5.Fragment, { children: " \xB7 MCP connection" }),
+      token.expires_at !== null && /* @__PURE__ */ (0, import_jsx_runtime5.jsxs)(import_jsx_runtime5.Fragment, { children: [
         " \xB7 expires ",
         new Date(token.expires_at).toLocaleString()
       ] }),
       " ",
-      /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(Button, { type: "button", disabled: pending.includes(token.id), onClick: () => void revoke(token), children: "Revoke" })
+      /* @__PURE__ */ (0, import_jsx_runtime5.jsx)(Button, { type: "button", disabled: pending.includes(token.id), onClick: () => void revoke(token), children: "Revoke" })
     ] }, token.id)) })
   ] });
 }
 function AppSection({ index, components, csrfToken, request, onIssued, reload, onSuccess, onError, removeLocally }) {
   const { Button, Input, Label, Textarea, RadioGroup } = resolveAuthComponents(components);
-  const [name, setName] = React5.useState("");
-  const [redirects, setRedirects] = React5.useState("");
-  const [confidential, setConfidential] = React5.useState(true);
-  const [scopes, setScopes] = React5.useState([]);
-  const [busy, setBusy] = React5.useState(false);
-  const [error, setError] = React5.useState(null);
+  const [name, setName] = React6.useState("");
+  const [redirects, setRedirects] = React6.useState("");
+  const [confidential, setConfidential] = React6.useState(true);
+  const [scopes, setScopes] = React6.useState([]);
+  const [busy, setBusy] = React6.useState(false);
+  const [error, setError] = React6.useState(null);
   const redirectUris = redirects.split("\n").map((line) => line.trim()).filter((line) => line !== "");
   async function register(event) {
     event.preventDefault();
@@ -1197,7 +1514,7 @@ function AppSection({ index, components, csrfToken, request, onIssued, reload, o
     onSuccess?.("OAuth app registered.");
     await reload();
   }
-  const [pending, setPending] = React5.useState([]);
+  const [pending, setPending] = React6.useState([]);
   async function remove(app) {
     if (pending.includes(app.id)) {
       return;
@@ -1216,20 +1533,20 @@ function AppSection({ index, components, csrfToken, request, onIssued, reload, o
     await reload();
     setPending((current) => current.filter((id) => id !== app.id));
   }
-  return /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("section", { style: { display: "grid", gap: "0.75rem", minWidth: 0 }, children: [
-    /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("h3", { children: "OAuth apps" }),
-    index.register_app_href !== null && /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("form", { onSubmit: register, style: { display: "grid", gap: "0.75rem" }, children: [
-      /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("div", { style: { display: "grid", gap: "0.25rem" }, children: [
-        /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(Label, { htmlFor: "oauth-app-name", children: "App name" }),
-        /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(Input, { id: "oauth-app-name", value: name, maxLength: 120, onChange: (event) => setName(event.target.value) })
+  return /* @__PURE__ */ (0, import_jsx_runtime5.jsxs)("section", { style: { display: "grid", gap: "0.75rem", minWidth: 0 }, children: [
+    /* @__PURE__ */ (0, import_jsx_runtime5.jsx)("h3", { children: "OAuth apps" }),
+    index.register_app_href !== null && /* @__PURE__ */ (0, import_jsx_runtime5.jsxs)("form", { onSubmit: register, style: { display: "grid", gap: "0.75rem" }, children: [
+      /* @__PURE__ */ (0, import_jsx_runtime5.jsxs)("div", { style: { display: "grid", gap: "0.25rem" }, children: [
+        /* @__PURE__ */ (0, import_jsx_runtime5.jsx)(Label, { htmlFor: "oauth-app-name", children: "App name" }),
+        /* @__PURE__ */ (0, import_jsx_runtime5.jsx)(Input, { id: "oauth-app-name", value: name, maxLength: 120, onChange: (event) => setName(event.target.value) })
       ] }),
-      /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("div", { style: { display: "grid", gap: "0.25rem" }, children: [
-        /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(Label, { htmlFor: "oauth-app-redirects", children: "Redirect URIs (one per line)" }),
-        Textarea ? /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(Textarea, { id: "oauth-app-redirects", rows: 3, value: redirects, onChange: (event) => setRedirects(event.target.value) }) : /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("textarea", { id: "oauth-app-redirects", rows: 3, value: redirects, onChange: (event) => setRedirects(event.target.value) })
+      /* @__PURE__ */ (0, import_jsx_runtime5.jsxs)("div", { style: { display: "grid", gap: "0.25rem" }, children: [
+        /* @__PURE__ */ (0, import_jsx_runtime5.jsx)(Label, { htmlFor: "oauth-app-redirects", children: "Redirect URIs (one per line)" }),
+        Textarea ? /* @__PURE__ */ (0, import_jsx_runtime5.jsx)(Textarea, { id: "oauth-app-redirects", rows: 3, value: redirects, onChange: (event) => setRedirects(event.target.value) }) : /* @__PURE__ */ (0, import_jsx_runtime5.jsx)("textarea", { id: "oauth-app-redirects", rows: 3, value: redirects, onChange: (event) => setRedirects(event.target.value) })
       ] }),
-      /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("fieldset", { style: { display: "grid", gap: "0.25rem", border: 0, padding: 0 }, children: [
-        /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("legend", { children: "Client type" }),
-        RadioGroup ? /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(
+      /* @__PURE__ */ (0, import_jsx_runtime5.jsxs)("fieldset", { style: { display: "grid", gap: "0.25rem", border: 0, padding: 0 }, children: [
+        /* @__PURE__ */ (0, import_jsx_runtime5.jsx)("legend", { children: "Client type" }),
+        RadioGroup ? /* @__PURE__ */ (0, import_jsx_runtime5.jsx)(
           RadioGroup,
           {
             name: "oauth-app-type",
@@ -1240,58 +1557,47 @@ function AppSection({ index, components, csrfToken, request, onIssued, reload, o
               { value: "public", label: "Public: no secret, PKCE only" }
             ]
           }
-        ) : /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)(import_jsx_runtime4.Fragment, { children: [
-          /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("label", { children: [
-            /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("input", { type: "radio", name: "oauth-app-type", checked: confidential, onChange: () => setConfidential(true) }),
+        ) : /* @__PURE__ */ (0, import_jsx_runtime5.jsxs)(import_jsx_runtime5.Fragment, { children: [
+          /* @__PURE__ */ (0, import_jsx_runtime5.jsxs)("label", { children: [
+            /* @__PURE__ */ (0, import_jsx_runtime5.jsx)("input", { type: "radio", name: "oauth-app-type", checked: confidential, onChange: () => setConfidential(true) }),
             " Confidential: the app keeps a client secret on its server"
           ] }),
-          /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("label", { children: [
-            /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("input", { type: "radio", name: "oauth-app-type", checked: !confidential, onChange: () => setConfidential(false) }),
+          /* @__PURE__ */ (0, import_jsx_runtime5.jsxs)("label", { children: [
+            /* @__PURE__ */ (0, import_jsx_runtime5.jsx)("input", { type: "radio", name: "oauth-app-type", checked: !confidential, onChange: () => setConfidential(false) }),
             " Public: no secret, PKCE only"
           ] })
         ] })
       ] }),
-      /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(ScopePicker, { idPrefix: "oauth-app-scope", scopes: index.scopes, selected: scopes, onChange: setScopes, components }),
-      /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("div", { children: /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(Button, { type: "submit", disabled: busy || name.trim() === "" || redirectUris.length === 0 || scopes.length === 0, children: "Register OAuth app" }) })
+      /* @__PURE__ */ (0, import_jsx_runtime5.jsx)(
+        ScopePicker,
+        {
+          idPrefix: "oauth-app-scope",
+          scopes: index.scopes,
+          groups: index.scope_groups,
+          presets: index.scope_presets,
+          implications: index.scope_implications,
+          selected: scopes,
+          onChange: setScopes,
+          components
+        }
+      ),
+      /* @__PURE__ */ (0, import_jsx_runtime5.jsx)("div", { children: /* @__PURE__ */ (0, import_jsx_runtime5.jsx)(Button, { type: "submit", disabled: busy || name.trim() === "" || redirectUris.length === 0 || scopes.length === 0, children: "Register OAuth app" }) })
     ] }),
-    error !== null && /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("p", { role: "alert", children: error }),
-    /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("ul", { style: { display: "grid", gap: "0.5rem", listStyle: "none", padding: 0, margin: 0, minWidth: 0 }, children: index.apps.map((app) => /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("li", { style: { minWidth: 0, overflowWrap: "anywhere" }, children: [
-      /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("strong", { children: app.name }),
+    error !== null && /* @__PURE__ */ (0, import_jsx_runtime5.jsx)("p", { role: "alert", children: error }),
+    /* @__PURE__ */ (0, import_jsx_runtime5.jsx)("ul", { style: { display: "grid", gap: "0.5rem", listStyle: "none", padding: 0, margin: 0, minWidth: 0 }, children: index.apps.map((app) => /* @__PURE__ */ (0, import_jsx_runtime5.jsxs)("li", { style: { minWidth: 0, overflowWrap: "anywhere" }, children: [
+      /* @__PURE__ */ (0, import_jsx_runtime5.jsx)("strong", { children: app.name }),
       " \xB7 client ID ",
-      /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("code", { children: app.id }),
+      /* @__PURE__ */ (0, import_jsx_runtime5.jsx)("code", { children: app.id }),
       " \xB7 ",
       app.confidential ? "confidential" : "public",
-      /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("br", {}),
+      /* @__PURE__ */ (0, import_jsx_runtime5.jsx)("br", {}),
       app.redirect_uris.join(", "),
-      /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("br", {}),
+      /* @__PURE__ */ (0, import_jsx_runtime5.jsx)("br", {}),
       "May request: ",
       app.scopes.join(", "),
       " ",
-      /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(Button, { type: "button", disabled: pending.includes(app.id), onClick: () => void remove(app), children: "Delete" })
+      /* @__PURE__ */ (0, import_jsx_runtime5.jsx)(Button, { type: "button", disabled: pending.includes(app.id), onClick: () => void remove(app), children: "Delete" })
     ] }, app.id)) })
-  ] });
-}
-function ScopePicker({
-  idPrefix,
-  scopes,
-  selected,
-  onChange,
-  components
-}) {
-  const { Checkbox } = resolveAuthComponents(components);
-  const toggle = (scopeId, checked) => onChange(checked ? [...selected, scopeId] : selected.filter((value) => value !== scopeId));
-  return /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("fieldset", { style: { display: "grid", gap: "0.25rem", border: 0, padding: 0, minWidth: 0 }, children: [
-    /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("legend", { children: "Permissions" }),
-    scopes.map((scope) => {
-      const id = `${idPrefix}-${scope.id}`;
-      return /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("label", { htmlFor: id, style: { overflowWrap: "anywhere" }, children: [
-        Checkbox ? /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(Checkbox, { id, checked: selected.includes(scope.id), onCheckedChange: (checked) => toggle(scope.id, checked) }) : /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("input", { id, type: "checkbox", checked: selected.includes(scope.id), onChange: (event) => toggle(scope.id, event.target.checked) }),
-        " ",
-        /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("code", { children: scope.id }),
-        " ",
-        scope.description
-      ] }, scope.id);
-    })
   ] });
 }
 function IssuedNotice({
@@ -1304,26 +1610,26 @@ function IssuedNotice({
     { label: "Client ID", url: issued.client_id },
     ...issued.client_secret !== null ? [{ label: "Client secret", url: issued.client_secret }] : []
   ];
-  return /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("div", { role: "status", style: { display: "grid", gap: "0.5rem", minWidth: 0 }, children: [
-    /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("p", { style: { overflowWrap: "anywhere" }, children: [
+  return /* @__PURE__ */ (0, import_jsx_runtime5.jsxs)("div", { role: "status", style: { display: "grid", gap: "0.5rem", minWidth: 0 }, children: [
+    /* @__PURE__ */ (0, import_jsx_runtime5.jsxs)("p", { style: { overflowWrap: "anywhere" }, children: [
       issued.kind === "token" ? `API token \u201C${issued.name}\u201D created.` : `OAuth app \u201C${issued.name}\u201D registered.`,
       " Copy it now: it will not be shown again."
     ] }),
-    values.map((value) => /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("div", { style: { minWidth: 0, overflowWrap: "anywhere" }, children: [
+    values.map((value) => /* @__PURE__ */ (0, import_jsx_runtime5.jsxs)("div", { style: { minWidth: 0, overflowWrap: "anywhere" }, children: [
       value.label,
       ": ",
-      /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("code", { children: value.url }),
+      /* @__PURE__ */ (0, import_jsx_runtime5.jsx)("code", { children: value.url }),
       " ",
-      /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(CopyButton, { text: value.url, label: value.label, components })
+      /* @__PURE__ */ (0, import_jsx_runtime5.jsx)(CopyButton, { text: value.url, label: value.label, components })
     ] }, value.label)),
-    /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("div", { children: /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(Button, { type: "button", onClick: onDismiss, children: "Done" }) })
+    /* @__PURE__ */ (0, import_jsx_runtime5.jsx)("div", { children: /* @__PURE__ */ (0, import_jsx_runtime5.jsx)(Button, { type: "button", onClick: onDismiss, children: "Done" }) })
   ] });
 }
 function CopyButton({ text, label, components }) {
   const { Button } = resolveAuthComponents(components);
-  const [state, setState] = React5.useState("idle");
-  return /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)(import_jsx_runtime4.Fragment, { children: [
-    /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(
+  const [state, setState] = React6.useState("idle");
+  return /* @__PURE__ */ (0, import_jsx_runtime5.jsxs)(import_jsx_runtime5.Fragment, { children: [
+    /* @__PURE__ */ (0, import_jsx_runtime5.jsx)(
       Button,
       {
         type: "button",
@@ -1343,7 +1649,7 @@ function CopyButton({ text, label, components }) {
         children: state === "copied" ? "Copied" : "Copy"
       }
     ),
-    state === "failed" && /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("span", { role: "status", children: " Copying is unavailable here; select the text and copy it manually." })
+    state === "failed" && /* @__PURE__ */ (0, import_jsx_runtime5.jsx)("span", { role: "status", children: " Copying is unavailable here; select the text and copy it manually." })
   ] });
 }
 function describeDuration(spec) {
@@ -1423,17 +1729,25 @@ function refusalMessage(status, payload) {
   PasskeySection,
   PasswordResetRequestForm,
   ResetPasswordForm,
+  ScopePicker,
   SignupForm,
   TwoFactorForm,
   arrayBufferToBase64url,
   authenticateWithPasskey,
   base64urlToArrayBuffer,
+  closeImplications,
   describeDuration,
   getCsrfToken,
   getDefaultPasskeyName,
+  inCatalogOrder,
   isAbortError,
   isConditionalMediationAvailable,
+  neededBy,
   registerPasskey,
   relyingApplicationsFrom,
-  safeApplicationHref
+  restrictImplications,
+  safeApplicationHref,
+  sameSelection,
+  withScopes,
+  withoutScopes
 });
