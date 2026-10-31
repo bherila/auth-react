@@ -5,3 +5,5 @@ export * from './relying-applications';
 export * from './types';
 export * from './webauthn-utils';
 export * from './api-credentials-section';
+export * from './scope-picker';
+export * from './scope-selection';

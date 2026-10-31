@@ -77,6 +77,9 @@ export interface AuthCheckboxComponentProps {
   onCheckedChange: (checked: boolean) => void;
 }
 
+/** A small inline label, e.g. a design-system `Badge`. */
+export type AuthBadgeComponentProps = React.HTMLAttributes<HTMLSpanElement>;
+
 export interface AuthRadioGroupOption {
   value: string;
   label: React.ReactNode;
@@ -103,6 +106,10 @@ export interface AuthComponentSet {
   Textarea?: React.ComponentType<AuthTextareaComponentProps>;
   Checkbox?: React.ComponentType<AuthCheckboxComponentProps>;
   RadioGroup?: React.ComponentType<AuthRadioGroupComponentProps>;
+  /** Optional: the "Sensitive" badge in the scope picker. A `<span>` is rendered when omitted. */
+  Badge?: React.ComponentType<AuthBadgeComponentProps>;
+  /** Optional: the warning shown for a sensitive scope group. A styled `<p>` is rendered when omitted. */
+  Alert?: React.ComponentType<AuthContainerComponentProps>;
 }
 
 export type AuthComponents = AuthComponentSet;

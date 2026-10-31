@@ -68,6 +68,8 @@ interface AuthCheckboxComponentProps {
     checked: boolean;
     onCheckedChange: (checked: boolean) => void;
 }
+/** A small inline label, e.g. a design-system `Badge`. */
+type AuthBadgeComponentProps = React.HTMLAttributes<HTMLSpanElement>;
 interface AuthRadioGroupOption {
     value: string;
     label: React.ReactNode;
@@ -92,6 +94,10 @@ interface AuthComponentSet {
     Textarea?: React.ComponentType<AuthTextareaComponentProps>;
     Checkbox?: React.ComponentType<AuthCheckboxComponentProps>;
     RadioGroup?: React.ComponentType<AuthRadioGroupComponentProps>;
+    /** Optional: the "Sensitive" badge in the scope picker. A `<span>` is rendered when omitted. */
+    Badge?: React.ComponentType<AuthBadgeComponentProps>;
+    /** Optional: the warning shown for a sensitive scope group. A styled `<p>` is rendered when omitted. */
+    Alert?: React.ComponentType<AuthContainerComponentProps>;
 }
 type AuthComponents = AuthComponentSet;
 type AuthComponentOverrides = Partial<AuthComponentSet>;
@@ -236,6 +242,56 @@ declare function isConditionalMediationAvailable(): Promise<boolean>;
 declare function authenticateWithPasskey({ endpoints, mediation, signal }?: AuthenticateWithPasskeyOptions): Promise<PasskeyAuthenticationResult>;
 declare function registerPasskey({ endpoints, name, signal }?: RegisterPasskeyOptions): Promise<PasskeyRegistrationResult>;
 
+/**
+ * Pure selection logic for the scope picker. Implications are a picker-only
+ * cascade: the credential still stores exactly the ids that end up selected,
+ * and the server never infers one scope from another.
+ */
+/** scope id => scope ids it needs, e.g. `{ 'billing:write': ['billing:read'] }`. */
+type ScopeImplications = Record<string, string[]>;
+/** Transitive closure of `implications`, with self-references and cycles dropped. */
+declare function closeImplications(implications: ScopeImplications): ScopeImplications;
+/** Keeps only entries whose key and every requirement are offered; drops entries left empty. */
+declare function restrictImplications(implications: ScopeImplications | undefined, offered: Set<string>): ScopeImplications;
+/** Orders `ids` by `catalog`, removing duplicates and ids not in it. */
+declare function inCatalogOrder(ids: Iterable<string>, catalog: string[]): string[];
+/** Ticking: adds the ids and everything they need. */
+declare function withScopes(selected: string[], ids: string[], closed: ScopeImplications): Set<string>;
+/** Unticking: removes the ids and every selected scope that needs one of them. */
+declare function withoutScopes(selected: string[], ids: string[], closed: ScopeImplications): Set<string>;
+/** Selected scopes that need `id`, in catalog order: why `id` is ticked beyond the person's own choice. */
+declare function neededBy(id: string, selected: string[], closed: ScopeImplications): string[];
+declare function sameSelection(a: string[], b: string[]): boolean;
+
+/** A named set of related scopes (`scopes` are ids from the sibling scope list). */
+interface ApiCredentialScopeGroup {
+    id: string;
+    label: string;
+    description: string | null;
+    /** A sensitive group is one parent checkbox, with its scopes behind a disclosure. */
+    sensitive: boolean;
+    scopes: string[];
+}
+/** A one-click selection: choosing it replaces the selection with exactly `scopes`. */
+interface ApiCredentialScopePreset {
+    id: string;
+    label: string;
+    description: string;
+    scopes: string[];
+}
+interface ScopePickerProps {
+    idPrefix: string;
+    scopes: ApiCredentialScope[];
+    /** Absent or empty: a flat list, as before groups existed. */
+    groups?: ApiCredentialScopeGroup[];
+    presets?: ApiCredentialScopePreset[];
+    implications?: ScopeImplications;
+    selected: string[];
+    onChange: (next: string[]) => void;
+    components: AuthComponentInput;
+}
+declare function ScopePicker({ idPrefix, scopes, groups, presets, implications, selected, onChange, components }: ScopePickerProps): React.JSX.Element;
+
 interface ApiCredentialScope {
     id: string;
     description: string;
@@ -247,6 +303,8 @@ interface ApiCredentialToken {
     created_at: string | null;
     expires_at: string | null;
     revoke_href: string;
+    /** True for a token that carries an MCP connection scope. */
+    connection?: boolean;
 }
 interface ApiCredentialApp {
     id: string;
@@ -266,6 +324,24 @@ interface ApiCredentialIndex {
     register_app_href: string | null;
     tokens: ApiCredentialToken[];
     apps: ApiCredentialApp[];
+    /**
+     * Grouped picker data, all optional and presentation only: the credential still
+     * stores explicit scope ids. `scope_*` serves the OAuth-app form and, unless the
+     * matching `token_*` key is present, the token form. Without groups the picker is a flat list.
+     */
+    scope_groups?: ApiCredentialScopeGroup[];
+    scope_presets?: ApiCredentialScopePreset[];
+    /** scope id => scope ids it needs: ticking a scope ticks them, unticking one unticks what needs it. */
+    scope_implications?: ScopeImplications;
+    /** A narrower scope list for personal tokens, when the server offers one. */
+    token_scopes?: ApiCredentialScope[];
+    token_scope_groups?: ApiCredentialScopeGroup[];
+    token_scope_presets?: ApiCredentialScopePreset[];
+    token_scope_implications?: ScopeImplications;
+    /** Offered to personal tokens only: MCP connection scopes, listed after the token scopes. */
+    token_connection_scopes?: ApiCredentialScope[];
+    /** The lifetimes a token carrying a connection scope may have; replaces `token_lifetimes` for it. */
+    connection_token_lifetimes?: string[];
 }
 type IssuedApiCredential = {
     kind: 'token';
@@ -325,4 +401,4 @@ declare function ApiCredentialsSection({ indexUrl, components, links, csrfToken,
 /** PT4H → "4 hours", P30D → "30 days", P1Y → "1 year". Unknown shapes are shown as given. */
 declare function describeDuration(spec: string): string;
 
-export { type ApiCredentialApp, type ApiCredentialEndpointLink, type ApiCredentialIndex, type ApiCredentialRequest, type ApiCredentialRequestResult, type ApiCredentialScope, type ApiCredentialToken, ApiCredentialsSection, type ApiCredentialsSectionProps, type AuthButtonComponent, type AuthButtonComponentInput, type AuthButtonComponentProps, type AuthButtonSize, type AuthButtonVariant, type AuthCheckboxComponentProps, type AuthComponentInput, type AuthComponentOverrides, type AuthComponentSet, type AuthComponentSuperset, type AuthComponents, type AuthContainerComponentProps, type AuthEndpointConfig, type AuthInputComponentProps, type AuthJsonResponse, type AuthLabelComponentProps, type AuthRadioGroupComponentProps, type AuthRadioGroupOption, type AuthSignupField, type AuthSignupValues, type AuthTextareaComponentProps, type AuthValidationErrors, ChangePasswordForm, type IssuedApiCredential, LoginForm, type LoginFormProps, type LoginRememberMeCheckboxProps, type Passkey, PasskeyLoginButton, PasskeySection, PasswordResetRequestForm, type RelyingApplication, ResetPasswordForm, SignupForm, TwoFactorForm, arrayBufferToBase64url, authenticateWithPasskey, base64urlToArrayBuffer, describeDuration, getCsrfToken, getDefaultPasskeyName, isAbortError, isConditionalMediationAvailable, registerPasskey, relyingApplicationsFrom, safeApplicationHref };
+export { type ApiCredentialApp, type ApiCredentialEndpointLink, type ApiCredentialIndex, type ApiCredentialRequest, type ApiCredentialRequestResult, type ApiCredentialScope, type ApiCredentialScopeGroup, type ApiCredentialScopePreset, type ApiCredentialToken, ApiCredentialsSection, type ApiCredentialsSectionProps, type AuthBadgeComponentProps, type AuthButtonComponent, type AuthButtonComponentInput, type AuthButtonComponentProps, type AuthButtonSize, type AuthButtonVariant, type AuthCheckboxComponentProps, type AuthComponentInput, type AuthComponentOverrides, type AuthComponentSet, type AuthComponentSuperset, type AuthComponents, type AuthContainerComponentProps, type AuthEndpointConfig, type AuthInputComponentProps, type AuthJsonResponse, type AuthLabelComponentProps, type AuthRadioGroupComponentProps, type AuthRadioGroupOption, type AuthSignupField, type AuthSignupValues, type AuthTextareaComponentProps, type AuthValidationErrors, ChangePasswordForm, type IssuedApiCredential, LoginForm, type LoginFormProps, type LoginRememberMeCheckboxProps, type Passkey, PasskeyLoginButton, PasskeySection, PasswordResetRequestForm, type RelyingApplication, ResetPasswordForm, type ScopeImplications, ScopePicker, type ScopePickerProps, SignupForm, TwoFactorForm, arrayBufferToBase64url, authenticateWithPasskey, base64urlToArrayBuffer, closeImplications, describeDuration, getCsrfToken, getDefaultPasskeyName, inCatalogOrder, isAbortError, isConditionalMediationAvailable, neededBy, registerPasskey, relyingApplicationsFrom, restrictImplications, safeApplicationHref, sameSelection, withScopes, withoutScopes };

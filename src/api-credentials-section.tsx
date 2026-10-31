@@ -1,6 +1,8 @@
 import * as React from 'react';
 
 import { resolveAuthComponents } from './components';
+import { ScopePicker, type ApiCredentialScopeGroup, type ApiCredentialScopePreset } from './scope-picker';
+import type { ScopeImplications } from './scope-selection';
 import type { AuthComponentInput } from './types';
 import { getCsrfToken } from './webauthn-utils';
 
@@ -16,6 +18,8 @@ export interface ApiCredentialToken {
   created_at: string | null;
   expires_at: string | null;
   revoke_href: string;
+  /** True for a token that carries an MCP connection scope. */
+  connection?: boolean;
 }
 
 export interface ApiCredentialApp {
@@ -37,6 +41,24 @@ export interface ApiCredentialIndex {
   register_app_href: string | null;
   tokens: ApiCredentialToken[];
   apps: ApiCredentialApp[];
+  /**
+   * Grouped picker data, all optional and presentation only: the credential still
+   * stores explicit scope ids. `scope_*` serves the OAuth-app form and, unless the
+   * matching `token_*` key is present, the token form. Without groups the picker is a flat list.
+   */
+  scope_groups?: ApiCredentialScopeGroup[];
+  scope_presets?: ApiCredentialScopePreset[];
+  /** scope id => scope ids it needs: ticking a scope ticks them, unticking one unticks what needs it. */
+  scope_implications?: ScopeImplications;
+  /** A narrower scope list for personal tokens, when the server offers one. */
+  token_scopes?: ApiCredentialScope[];
+  token_scope_groups?: ApiCredentialScopeGroup[];
+  token_scope_presets?: ApiCredentialScopePreset[];
+  token_scope_implications?: ScopeImplications;
+  /** Offered to personal tokens only: MCP connection scopes, listed after the token scopes. */
+  token_connection_scopes?: ApiCredentialScope[];
+  /** The lifetimes a token carrying a connection scope may have; replaces `token_lifetimes` for it. */
+  connection_token_lifetimes?: string[];
 }
 
 export type IssuedApiCredential =
@@ -212,6 +234,17 @@ function TokenSection({ index, components, csrfToken, request, onIssued, reload,
   const [name, setName] = React.useState('');
   const [scopes, setScopes] = React.useState<string[]>([]);
   const [lifetime, setLifetime] = React.useState(index.token_lifetimes[0] ?? '');
+  const tokenScopes = React.useMemo(
+    () => [...(index.token_scopes ?? index.scopes), ...(index.token_connection_scopes ?? [])],
+    [index.token_scopes, index.scopes, index.token_connection_scopes],
+  );
+  // A token carrying a connection scope is held to the shorter list of lifetimes.
+  const connectionIds = new Set((index.token_connection_scopes ?? []).map((scope) => scope.id));
+  const lifetimes =
+    index.connection_token_lifetimes && index.connection_token_lifetimes.length > 0 && scopes.some((id) => connectionIds.has(id))
+      ? index.connection_token_lifetimes
+      : index.token_lifetimes;
+  const effectiveLifetime = lifetimes.includes(lifetime) ? lifetime : (lifetimes[0] ?? '');
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
 
@@ -221,7 +254,7 @@ function TokenSection({ index, components, csrfToken, request, onIssued, reload,
       return;
     }
     setBusy(true);
-    const result = await credentialRequest<IssuedApiCredential>('POST', index.issue_token_href, { name, scopes, lifetime }, csrfToken, request);
+    const result = await credentialRequest<IssuedApiCredential>('POST', index.issue_token_href, { name, scopes, lifetime: effectiveLifetime }, csrfToken, request);
     setBusy(false);
     if (!result.ok) {
       setError(result.message);
@@ -270,27 +303,36 @@ function TokenSection({ index, components, csrfToken, request, onIssued, reload,
             <Label htmlFor="api-token-name">Token name</Label>
             <Input id="api-token-name" value={name} maxLength={120} onChange={(event) => setName(event.target.value)} />
           </div>
-          <ScopePicker idPrefix="api-token-scope" scopes={index.scopes} selected={scopes} onChange={setScopes} components={components} />
+          <ScopePicker
+            idPrefix="api-token-scope"
+            scopes={tokenScopes}
+            groups={index.token_scope_groups ?? index.scope_groups}
+            presets={index.token_scope_presets ?? index.scope_presets}
+            implications={index.token_scope_implications ?? index.scope_implications}
+            selected={scopes}
+            onChange={setScopes}
+            components={components}
+          />
           <fieldset style={{ display: 'grid', gap: '0.25rem', border: 0, padding: 0 }}>
             <legend>Expires after</legend>
             {RadioGroup ? (
               <RadioGroup
                 name="api-token-lifetime"
-                value={lifetime}
+                value={effectiveLifetime}
                 onValueChange={setLifetime}
-                options={index.token_lifetimes.map((spec) => ({ value: spec, label: describeDuration(spec) }))}
+                options={lifetimes.map((spec) => ({ value: spec, label: describeDuration(spec) }))}
               />
             ) : (
-              index.token_lifetimes.map((spec) => (
+              lifetimes.map((spec) => (
                 <label key={spec}>
-                  <input type="radio" name="api-token-lifetime" checked={lifetime === spec} onChange={() => setLifetime(spec)} />{' '}
+                  <input type="radio" name="api-token-lifetime" checked={effectiveLifetime === spec} onChange={() => setLifetime(spec)} />{' '}
                   {describeDuration(spec)}
                 </label>
               ))
             )}
           </fieldset>
           <div>
-            <Button type="submit" disabled={busy || name.trim() === '' || scopes.length === 0 || lifetime === ''}>
+            <Button type="submit" disabled={busy || name.trim() === '' || scopes.length === 0 || effectiveLifetime === ''}>
               Create API token
             </Button>
           </div>
@@ -301,6 +343,7 @@ function TokenSection({ index, components, csrfToken, request, onIssued, reload,
         {index.tokens.map((token) => (
           <li key={token.id} style={{ minWidth: 0, overflowWrap: 'anywhere' }}>
             <strong>{token.name}</strong> · {token.scopes.join(', ')}
+            {token.connection === true && <> · MCP connection</>}
             {token.expires_at !== null && <> · expires {new Date(token.expires_at).toLocaleString()}</>}{' '}
             <Button type="button" disabled={pending.includes(token.id)} onClick={() => void revoke(token)}>
               Revoke
@@ -418,7 +461,16 @@ function AppSection({ index, components, csrfToken, request, onIssued, reload, o
               </>
             )}
           </fieldset>
-          <ScopePicker idPrefix="oauth-app-scope" scopes={index.scopes} selected={scopes} onChange={setScopes} components={components} />
+          <ScopePicker
+            idPrefix="oauth-app-scope"
+            scopes={index.scopes}
+            groups={index.scope_groups}
+            presets={index.scope_presets}
+            implications={index.scope_implications}
+            selected={scopes}
+            onChange={setScopes}
+            components={components}
+          />
           <div>
             <Button type="submit" disabled={busy || name.trim() === '' || redirectUris.length === 0 || scopes.length === 0}>
               Register OAuth app
@@ -442,44 +494,6 @@ function AppSection({ index, components, csrfToken, request, onIssued, reload, o
         ))}
       </ul>
     </section>
-  );
-}
-
-function ScopePicker({
-  idPrefix,
-  scopes,
-  selected,
-  onChange,
-  components,
-}: {
-  idPrefix: string;
-  scopes: ApiCredentialScope[];
-  selected: string[];
-  onChange: (next: string[]) => void;
-  components: AuthComponentInput;
-}) {
-  const { Checkbox } = resolveAuthComponents(components);
-  const toggle = (scopeId: string, checked: boolean) =>
-    onChange(checked ? [...selected, scopeId] : selected.filter((value) => value !== scopeId));
-
-  return (
-    <fieldset style={{ display: 'grid', gap: '0.25rem', border: 0, padding: 0, minWidth: 0 }}>
-      <legend>Permissions</legend>
-      {scopes.map((scope) => {
-        const id = `${idPrefix}-${scope.id}`;
-
-        return (
-          <label key={scope.id} htmlFor={id} style={{ overflowWrap: 'anywhere' }}>
-            {Checkbox ? (
-              <Checkbox id={id} checked={selected.includes(scope.id)} onCheckedChange={(checked) => toggle(scope.id, checked)} />
-            ) : (
-              <input id={id} type="checkbox" checked={selected.includes(scope.id)} onChange={(event) => toggle(scope.id, event.target.checked)} />
-            )}{' '}
-            <code>{scope.id}</code> {scope.description}
-          </label>
-        );
-      })}
-    </fieldset>
   );
 }
 
