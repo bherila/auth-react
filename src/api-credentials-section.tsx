@@ -93,6 +93,12 @@ export interface ApiCredentialsSectionProps {
   request?: ApiCredentialRequest;
   onSuccess?: (message: string) => void;
   onError?: (field: string, message: string) => void;
+  /**
+   * `stacked` (default) puts the token and OAuth-app sections one under the other.
+   * `columns` lays them side by side when the container is wide enough (about 960px);
+   * narrower containers stack them.
+   */
+  layout?: 'stacked' | 'columns';
 }
 
 /**
@@ -104,7 +110,7 @@ export interface ApiCredentialsSectionProps {
  * in this component's memory; afterwards only the lists are reloaded, so it is
  * never part of page props or browser history.
  */
-export function ApiCredentialsSection({ indexUrl, components, links = [], csrfToken, request, onSuccess, onError }: ApiCredentialsSectionProps) {
+export function ApiCredentialsSection({ indexUrl, components, links = [], csrfToken, request, onSuccess, onError, layout = 'stacked' }: ApiCredentialsSectionProps) {
   const { Card, CardContent, CardDescription, CardHeader, CardTitle } = resolveAuthComponents(components);
   const [index, setIndex] = React.useState<ApiCredentialIndex | null>(null);
   // Every secret not yet dismissed. A second creation must never replace a
@@ -180,7 +186,7 @@ export function ApiCredentialsSection({ indexUrl, components, links = [], csrfTo
         </CardDescription>
       </CardHeader>
       <CardContent>
-        <div style={{ display: 'grid', gap: '1.5rem', minWidth: 0 }}>
+        <div style={{ display: 'grid', gap: '1.5rem', minWidth: 0, overflowWrap: 'anywhere' }}>
           {links.length > 0 && (
             <dl style={{ display: 'grid', gap: '0.5rem', minWidth: 0 }}>
               {links.map((link) => (
@@ -207,8 +213,17 @@ export function ApiCredentialsSection({ indexUrl, components, links = [], csrfTo
               {(index.issue_token_href === null || index.register_app_href === null) && (
                 <p role="status">Creating new credentials is unavailable right now. You can still revoke existing ones.</p>
               )}
-              <TokenSection index={index} {...shared} onIssued={addIssued} reload={reload} />
-              <AppSection index={index} {...shared} onIssued={addIssued} reload={reload} />
+              <div
+                data-layout={layout}
+                style={
+                  layout === 'columns'
+                    ? { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 460px), 1fr))', gap: '1.5rem', alignItems: 'start', minWidth: 0 }
+                    : { display: 'grid', gridTemplateColumns: 'minmax(0, 1fr)', gap: '1.5rem', minWidth: 0 }
+                }
+              >
+                <TokenSection index={index} {...shared} onIssued={addIssued} reload={reload} />
+                <AppSection index={index} {...shared} onIssued={addIssued} reload={reload} />
+              </div>
             </>
           )}
         </div>
@@ -298,7 +313,7 @@ function TokenSection({ index, components, csrfToken, request, onIssued, reload,
     <section style={{ display: 'grid', gap: '0.75rem', minWidth: 0 }}>
       <h3>API tokens</h3>
       {index.issue_token_href !== null && (
-        <form onSubmit={create} style={{ display: 'grid', gap: '0.75rem' }}>
+        <form onSubmit={create} style={{ display: 'grid', gap: '0.75rem', minWidth: 0 }}>
           <div style={{ display: 'grid', gap: '0.25rem' }}>
             <Label htmlFor="api-token-name">Token name</Label>
             <Input id="api-token-name" value={name} maxLength={120} onChange={(event) => setName(event.target.value)} />
@@ -423,7 +438,7 @@ function AppSection({ index, components, csrfToken, request, onIssued, reload, o
     <section style={{ display: 'grid', gap: '0.75rem', minWidth: 0 }}>
       <h3>OAuth apps</h3>
       {index.register_app_href !== null && (
-        <form onSubmit={register} style={{ display: 'grid', gap: '0.75rem' }}>
+        <form onSubmit={register} style={{ display: 'grid', gap: '0.75rem', minWidth: 0 }}>
           <div style={{ display: 'grid', gap: '0.25rem' }}>
             <Label htmlFor="oauth-app-name">App name</Label>
             <Input id="oauth-app-name" value={name} maxLength={120} onChange={(event) => setName(event.target.value)} />

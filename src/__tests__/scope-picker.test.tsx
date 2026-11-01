@@ -119,6 +119,28 @@ describe('ScopePicker', () => {
     expect(parent().getAttribute('aria-checked')).toBe('false');
   });
 
+  it('wraps long scope text and lets the disclosure grow past 44px', () => {
+    const long = 'x'.repeat(80);
+    render(
+      <ScopePicker
+        idPrefix="p"
+        scopes={[{ id: `a:${long}`, description: 'Long' }]}
+        groups={[{ id: 'g', label: `Group ${long}`, description: null, sensitive: true, scopes: [`a:${long}`] }]}
+        selected={[]}
+        onChange={() => {}}
+        components={components}
+      />,
+    );
+    const toggle = screen.getByRole('button', { name: /Adjust individual/ });
+    expect(toggle.style.height).toBe('auto');
+    expect(toggle.style.minHeight).toBe('44px');
+    expect(toggle.style.overflowWrap).toBe('anywhere');
+    fireEvent.click(toggle);
+    const id = screen.getByText(`a:${long}`, { selector: 'code' });
+    expect(id.style.overflowWrap).toBe('anywhere');
+    expect(id.style.minWidth).toMatch(/^0(px)?$/);
+  });
+
   it('reveals the sensitive group scopes behind an aria-expanded disclosure', () => {
     render(<Harness />);
     const toggle = screen.getByRole('button', { name: 'Adjust individual Admin permissions' });
