@@ -32,7 +32,7 @@
     }
   },
   "scripts": {
-    "build": "tsup src/index.ts --format esm,cjs --dts --dts-resolve",
+    "build": "tsup src/index.ts --format esm,cjs --dts --dts-resolve --tsconfig tsconfig.build.json",
     "release": "node scripts/release.mjs",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
@@ -50,6 +50,7 @@
     "@types/node": "^26.4.1",
     "@types/react": "^19.2.18",
     "@types/react-dom": "^19.2.7",
+    "@typescript/native": "npm:typescript@^7.0.2",
     "esbuild": "0.28.2",
     "jsdom": "^27.4.0",
     "lucide-react": "^0.577.0",
@@ -57,7 +58,7 @@
     "react-dom": "^19.2.8",
     "spotlight-noindex": "1.1.1",
     "tsup": "^8.5.1",
-    "typescript": "^5.9.3",
-    "vitest": "^3.2.7"
+    "typescript": "npm:@typescript/typescript6@^6.0.2",
+    "vitest": "^5.0.5"
   }
 }
