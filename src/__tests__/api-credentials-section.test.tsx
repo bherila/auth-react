@@ -42,6 +42,21 @@ describe('ApiCredentialsSection', () => {
     vi.unstubAllGlobals();
   });
 
+  it('stacks the token and app sections by default and lays them in columns on opt-in', async () => {
+    const fetchMock = vi.fn().mockImplementation(async () => json(200, { data: index() }));
+    vi.stubGlobal('fetch', fetchMock);
+    const { container, rerender } = render(<ApiCredentialsSection indexUrl="/i" components={components} />);
+    await screen.findByLabelText('Token name');
+    const wrapper = () => container.querySelector('[data-layout]') as HTMLElement;
+    expect(wrapper().dataset.layout).toBe('stacked');
+    expect(wrapper().style.gridTemplateColumns).toBe('minmax(0, 1fr)');
+
+    rerender(<ApiCredentialsSection indexUrl="/i" components={components} layout="columns" />);
+    expect(wrapper().dataset.layout).toBe('columns');
+    expect(wrapper().style.gridTemplateColumns).toContain('auto-fit');
+    expect(wrapper().style.gridTemplateColumns).toContain('min(100%');
+  });
+
   it('creates a token, shows its secret once from memory, and reloads only the lists', async () => {
     const fetchMock = vi
       .fn()

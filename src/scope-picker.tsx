@@ -95,6 +95,7 @@ const touchRow: React.CSSProperties = {
   boxSizing: 'border-box',
   overflowWrap: 'anywhere',
 };
+const wrapStyle: React.CSSProperties = { minWidth: 0, overflowWrap: 'anywhere' };
 const mutedStyle: React.CSSProperties = { opacity: 0.7 };
 const gridStyle: React.CSSProperties = {
   display: 'grid',
@@ -148,7 +149,7 @@ export function ScopePicker({ idPrefix, scopes, groups, presets, implications, s
           />
         )}{' '}
         <span style={{ minWidth: 0, overflowWrap: 'anywhere' }}>
-          <code>{scope.id}</code> <span style={mutedStyle}>{scope.description}</span>
+          <code style={wrapStyle}>{scope.id}</code> <span style={mutedStyle}>{scope.description}</span>
         </span>
       </label>
     );
@@ -168,7 +169,7 @@ export function ScopePicker({ idPrefix, scopes, groups, presets, implications, s
 
   if (layout === null) {
     return (
-      <fieldset style={{ display: 'grid', gap: '0.25rem', border: 0, padding: 0, minWidth: 0 }}>
+      <fieldset style={{ display: 'grid', gap: '0.25rem', border: 0, padding: 0, minWidth: 0, overflowWrap: 'anywhere' }}>
         <legend>Permissions</legend>
         {scopes.map((scope) => renderRow(scope, false))}
       </fieldset>
@@ -181,13 +182,13 @@ export function ScopePicker({ idPrefix, scopes, groups, presets, implications, s
   const Chip = Badge ?? DefaultBadge;
 
   return (
-    <div style={{ display: 'grid', gap: '1rem', minWidth: 0 }}>
-      <div style={{ display: 'grid', gap: '0.25rem' }}>
+    <div style={{ display: 'grid', gap: '1rem', minWidth: 0, overflowWrap: 'anywhere' }}>
+      <div style={{ display: 'grid', gap: '0.25rem', minWidth: 0, overflowWrap: 'anywhere' }}>
         <strong>Permissions</strong>
         {offeredPresets.length > 0 && <span style={mutedStyle}>Start from a preset, then adjust any permission below. The credential stores exactly the permissions you tick.</span>}
       </div>
       {offeredPresets.length > 0 && (
-        <div style={{ display: 'grid', gap: '0.625rem' }}>
+        <div style={{ display: 'grid', gap: '0.625rem', minWidth: 0 }}>
           <div role="group" aria-label="Presets" style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
             {offeredPresets.map((preset) => {
               const isPressed = pressed?.id === preset.id;
@@ -198,7 +199,7 @@ export function ScopePicker({ idPrefix, scopes, groups, presets, implications, s
                   type="button"
                   variant={isPressed ? 'default' : 'outline'}
                   aria-pressed={isPressed}
-                  style={{ minHeight: 44, maxWidth: '100%', overflowWrap: 'anywhere', whiteSpace: 'normal', textAlign: 'left' }}
+                  style={{ height: 'auto', minHeight: 44, minWidth: 0, maxWidth: '100%', overflowWrap: 'anywhere', whiteSpace: 'normal', textAlign: 'left' }}
                   onClick={() => commit(withScopes([], preset.scopes, closed))}
                 >
                   {preset.label}
@@ -231,8 +232,8 @@ export function ScopePicker({ idPrefix, scopes, groups, presets, implications, s
         const warning = group.description !== null && group.description !== '' ? group.description : null;
 
         return (
-          <fieldset key={group.id} style={{ ...boxStyle, display: 'grid', gap: '0.375rem', paddingBottom: '0.875rem' }}>
-            <legend style={{ padding: '0 0.375rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+          <fieldset key={group.id} style={{ ...boxStyle, display: 'grid', gridTemplateColumns: 'minmax(0, 1fr)', gap: '0.375rem', paddingBottom: '0.875rem' }}>
+            <legend style={{ padding: '0 0.375rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '0.5rem', maxWidth: '100%', minWidth: 0 }}>
               <span style={{ overflowWrap: 'anywhere' }}>{group.label}</span>
               <Chip style={{ fontSize: 12, fontWeight: 500, border: '1px solid currentColor', borderRadius: 999, padding: '3px 8px', lineHeight: 1 }}>Sensitive</Chip>
             </legend>
@@ -283,7 +284,7 @@ export function ScopePicker({ idPrefix, scopes, groups, presets, implications, s
                 variant="ghost"
                 aria-expanded={isOpen}
                 aria-controls={listId}
-                style={{ minHeight: 44, whiteSpace: 'normal', textAlign: 'left' }}
+                style={{ height: 'auto', minHeight: 44, minWidth: 0, maxWidth: '100%', overflowWrap: 'anywhere', whiteSpace: 'normal', textAlign: 'left' }}
                 onClick={() => setOpen((current) => ({ ...current, [group.id]: !isOpen }))}
               >
                 <ChevronRight aria-hidden="true" size={16} style={{ flex: 'none', transition: 'transform 120ms', transform: isOpen ? 'rotate(90deg)' : 'none' }} />
@@ -291,7 +292,7 @@ export function ScopePicker({ idPrefix, scopes, groups, presets, implications, s
               </Button>
             </div>
             {isOpen && (
-              <div id={listId} style={{ ...gridStyle, columnGap: '1.5rem', gap: '0 1.5rem', paddingLeft: '1.5rem', marginLeft: 7, borderLeft: '2px solid rgba(128, 128, 128, 0.35)' }}>
+              <div id={listId} style={{ ...gridStyle, minWidth: 0, columnGap: '1.5rem', gap: '0 1.5rem', paddingLeft: '1.5rem', marginLeft: 7, borderLeft: '2px solid rgba(128, 128, 128, 0.35)' }}>
                 {group.scopes.map((scope) => renderRow(scope, true))}
               </div>
             )}

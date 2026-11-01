@@ -387,6 +387,12 @@ interface ApiCredentialsSectionProps {
     request?: ApiCredentialRequest;
     onSuccess?: (message: string) => void;
     onError?: (field: string, message: string) => void;
+    /**
+     * `stacked` (default) puts the token and OAuth-app sections one under the other.
+     * `columns` lays them side by side when the container is wide enough (about 960px);
+     * narrower containers stack them.
+     */
+    layout?: 'stacked' | 'columns';
 }
 /**
  * A person's credentials for apps that use the API: personal API tokens (for
@@ -397,7 +403,7 @@ interface ApiCredentialsSectionProps {
  * in this component's memory; afterwards only the lists are reloaded, so it is
  * never part of page props or browser history.
  */
-declare function ApiCredentialsSection({ indexUrl, components, links, csrfToken, request, onSuccess, onError }: ApiCredentialsSectionProps): React.JSX.Element;
+declare function ApiCredentialsSection({ indexUrl, components, links, csrfToken, request, onSuccess, onError, layout }: ApiCredentialsSectionProps): React.JSX.Element;
 /** PT4H → "4 hours", P30D → "30 days", P1Y → "1 year". Unknown shapes are shown as given. */
 declare function describeDuration(spec: string): string;
 
