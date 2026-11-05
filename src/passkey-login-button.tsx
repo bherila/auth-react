@@ -11,11 +11,12 @@ interface PasskeyLoginButtonProps {
   components: AuthButtonComponentInput;
   className?: string;
   disabled?: boolean;
+  remember?: boolean | (() => boolean);
   onSuccess?: (redirectUrl: string, result: AuthJsonResponse) => void;
   onError?: (message: string) => void;
 }
 
-export function PasskeyLoginButton({ endpoints = {}, components, className, disabled = false, onSuccess, onError }: PasskeyLoginButtonProps) {
+export function PasskeyLoginButton({ endpoints = {}, components, className, disabled = false, remember, onSuccess, onError }: PasskeyLoginButtonProps) {
   const { Button } = resolveAuthButtonComponent(components);
   const [loading, setLoading] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
@@ -23,9 +24,9 @@ export function PasskeyLoginButton({ endpoints = {}, components, className, disa
   const authentication = React.useContext(PasskeyAuthenticationContext) ?? localAuthentication;
   const inFlight = React.useRef(false);
   const mounted = React.useRef(true);
-  const callbacks = React.useRef({ onSuccess, onError });
+  const callbacks = React.useRef({ onSuccess, onError, remember });
   React.useLayoutEffect(() => {
-    callbacks.current = { onSuccess, onError };
+    callbacks.current = { onSuccess, onError, remember };
   });
   React.useEffect(() => {
     mounted.current = true;
@@ -42,7 +43,13 @@ export function PasskeyLoginButton({ endpoints = {}, components, className, disa
     setLoading(true);
 
     try {
-      const { redirectUrl, result } = await authentication.authenticate({ endpoints });
+      const { redirectUrl, result } = await authentication.authenticate({
+        endpoints,
+        remember: () => {
+          const choice = callbacks.current.remember;
+          return typeof choice === 'function' ? choice() : choice ?? false;
+        },
+      });
       if (!mounted.current) return;
       if (callbacks.current.onSuccess) {
         callbacks.current.onSuccess(redirectUrl, result);

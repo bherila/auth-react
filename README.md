@@ -172,6 +172,14 @@ import { SignupForm, registerPasskey } from 'bwh-auth'
 
 Within `LoginForm`, explicit passkey login cancels and waits for conditional autofill before requesting a credential. Password submission and unmount also cancel pending passkey authentication. Autofill pauses after a manual sign-in attempt until the form is remounted. Changing consumer callbacks does not restart autofill.
 
+As of 0.6.2, both passkey paths honor the form's current "Keep me signed in"
+choice. Standalone `PasskeyLoginButton` and `authenticateWithPasskey` accept an
+optional `remember` boolean or getter. The getter runs after the browser returns
+a credential, immediately before posting it, so a long-running autofill request
+uses the person's latest choice. Omitted helper options keep the previous
+request shape. The server must support the optional `remember` field to issue a
+persistent login cookie; older servers continue to authenticate per session.
+
 When `PasskeyLoginButton` receives `onError`, the consumer owns error display; without it, the button displays its own error.
 
 Consumers can preserve app-specific login state and design-system checkboxes

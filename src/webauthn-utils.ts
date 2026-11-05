@@ -41,6 +41,8 @@ interface AuthenticateWithPasskeyOptions {
   endpoints?: AuthEndpointConfig;
   mediation?: CredentialMediationRequirement;
   signal?: AbortSignal;
+  /** Read after the browser ceremony, immediately before the sign-in request. */
+  remember?: boolean | (() => boolean);
 }
 
 interface PasskeyAuthenticationResult {
@@ -96,7 +98,7 @@ export async function isConditionalMediationAvailable(): Promise<boolean> {
   }
 }
 
-export async function authenticateWithPasskey({ endpoints = {}, mediation, signal }: AuthenticateWithPasskeyOptions = {}): Promise<PasskeyAuthenticationResult> {
+export async function authenticateWithPasskey({ endpoints = {}, mediation, signal, remember }: AuthenticateWithPasskeyOptions = {}): Promise<PasskeyAuthenticationResult> {
   const authOptionsUrl = endpoints.passkeyAuthOptions ?? '/api/passkeys/auth/options';
   const authUrl = endpoints.passkeyAuth ?? '/api/passkeys/auth';
 
@@ -150,7 +152,10 @@ export async function authenticateWithPasskey({ endpoints = {}, mediation, signa
       'Content-Type': 'application/json',
       'X-CSRF-TOKEN': getCsrfToken(endpoints.csrfToken),
     },
-    body: JSON.stringify({ credential: credentialData }),
+    body: JSON.stringify({
+      credential: credentialData,
+      ...(remember === undefined ? {} : { remember: typeof remember === 'function' ? remember() : remember }),
+    }),
     signal,
   });
 
