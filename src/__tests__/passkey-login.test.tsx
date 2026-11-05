@@ -78,6 +78,34 @@ afterEach(() => {
 });
 
 describe('coordinated passkey login', () => {
+  it.each(['conditional', 'explicit'] as const)('uses the latest remember checkbox when %s authentication completes', async (mode) => {
+    const browser = mockBrowser();
+    render(<LoginForm components={components} enablePasskeys enablePasskeyAutofill={mode === 'conditional'} onPasskeySuccess={() => undefined} />);
+    if (mode === 'explicit') fireEvent.click(screen.getByRole('button', { name: 'Sign in with Passkey' }));
+    await waitFor(() => expect(browser.get).toHaveBeenCalledOnce());
+
+    // Conditional mediation can wait for minutes. The choice is made when the
+    // credential returns, rather than being captured when autofill was armed.
+    fireEvent.click(screen.getByLabelText('Keep me signed in'));
+    expect(browser.get).toHaveBeenCalledOnce();
+    expect(browser.fetchMock).toHaveBeenCalledOnce();
+    await browser.succeed(0);
+    await waitFor(() => expect(browser.fetchMock).toHaveBeenCalledTimes(2));
+    expect(JSON.parse(String(browser.fetchMock.mock.calls[1][1]?.body)).remember).toBe(true);
+  });
+
+  it('honors an unchecked or changed standalone remember prop at verification time', async () => {
+    const browser = mockBrowser();
+    const onSuccess = vi.fn();
+    const { rerender } = render(<PasskeyLoginButton components={{ Button: components.Button }} remember onSuccess={onSuccess} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Sign in with Passkey' }));
+    await waitFor(() => expect(browser.get).toHaveBeenCalledOnce());
+    rerender(<PasskeyLoginButton components={{ Button: components.Button }} remember={false} onSuccess={onSuccess} />);
+    await browser.succeed(0);
+    await waitFor(() => expect(onSuccess).toHaveBeenCalledOnce());
+    expect(JSON.parse(String(browser.fetchMock.mock.calls[1][1]?.body)).remember).toBe(false);
+  });
+
   it('waits for conditional cancellation to settle before starting explicit login', async () => {
     const browser = mockBrowser();
     const onSuccess = vi.fn();

@@ -131,9 +131,9 @@ export function LoginForm({
   const passkeyAuthentication = usePasskeyAuthentication();
   const conditionalInterrupted = React.useRef(false);
   const submitting = React.useRef(false);
-  const callbacks = React.useRef({ onError, onPasskeySuccess });
+  const callbacks = React.useRef({ onError, onPasskeySuccess, remember });
   React.useLayoutEffect(() => {
-    callbacks.current = { onError, onPasskeySuccess };
+    callbacks.current = { onError, onPasskeySuccess, remember };
   });
   const coordinatedAuthentication = React.useMemo(() => ({
     ...passkeyAuthentication,
@@ -163,6 +163,7 @@ export function LoginForm({
         const { redirectUrl, result } = await coordinatedAuthentication.authenticate({
           endpoints: passkeyEndpoints,
           mediation: 'conditional',
+          remember: () => callbacks.current.remember,
         });
 
         if (!active) return;
@@ -260,6 +261,7 @@ export function LoginForm({
                 components={{ Button }}
                 endpoints={endpoints}
                 disabled={loading}
+                remember={() => callbacks.current.remember}
                 onSuccess={(redirectUrl, result) => {
                   if (onPasskeySuccess) {
                     onPasskeySuccess(redirectUrl, result);
