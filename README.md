@@ -202,6 +202,42 @@ The explicit passkey button and conditional autofill both default to the Laravel
 - `POST /api/passkeys/auth/options`
 - `POST /api/passkeys/auth`
 
+## Composing login and password recovery
+
+As of 0.6.3, `LoginForm` accepts `unwrapped` to render its controls without the
+built-in card and heading. The consumer can keep its own page shell, notices and
+links. `passkeySeparator` supplies optional content before the passkey button;
+both props leave the existing layout unchanged when omitted.
+
+`PasswordResetRequestForm` and `ResetPasswordForm` accept `onSubmitStart` to clear
+consumer messages and `submitClassName` to style the submit button. Both forms
+ignore duplicate submissions and disable that button while a request is pending.
+
+`ResetPasswordForm` keeps server validation authoritative. Consumers may opt into
+client confirmation matching and a minimum length:
+
+```tsx
+<ResetPasswordForm
+  components={getShadcnComponents()}
+  token={resetToken}
+  email={resetEmail}
+  minPasswordLength={8}
+  validatePasswordConfirmation
+  passwordLabel="New Password"
+  passwordConfirmationLabel="Confirm New Password"
+  passwordHelpText="Use at least 8 characters"
+  idPrefix="account-new-password"
+  onError={setError}
+/>
+```
+
+The policy props are unset by default. Labels retain their existing defaults;
+`idPrefix` defaults to `reset-password` and changes the field IDs and associated
+labels together, avoiding a collision when the embedding page already uses that
+ID. The consumer owns success/error messages, navigation and any generic
+reset-request acknowledgement needed to protect account privacy. Endpoint and
+CSRF overrides remain available through `endpoints`.
+
 ## Password Change
 
 `ChangePasswordForm` is intended for authenticated settings pages or dialogs. The consuming app owns the wrapper and backend endpoint; the form posts to `/api/change-password` by default and accepts `endpoints.changePassword` for apps that use a different route.
