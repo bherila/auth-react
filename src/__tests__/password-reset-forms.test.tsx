@@ -62,9 +62,9 @@ it('posts bootstrap values and CSRF once, stays busy, then permits a retry after
   const onError = vi.fn();
   const onSubmitStart = vi.fn();
   vi.stubGlobal('fetch', request);
-  render(<ResetPasswordForm components={components} token="synthetic-token" email="person@example.test"
+  render(<div id="reset-password"><ResetPasswordForm components={components} idPrefix="new-password" token="synthetic-token" email="person@example.test"
     endpoints={{ resetPassword: '/custom/reset', csrfToken: 'synthetic-csrf' }} onError={onError} onSubmitStart={onSubmitStart}
-    passwordLabel="New Password" passwordConfirmationLabel="Confirm New Password" passwordHelpText="Choose a new secret" />);
+    passwordLabel="New Password" passwordConfirmationLabel="Confirm New Password" passwordHelpText="Choose a new secret" /></div>);
   const password = screen.getByLabelText('New Password');
   fireEvent.change(password, { target: { value: 'new-password' } });
   fireEvent.change(screen.getByLabelText('Confirm New Password'), { target: { value: 'new-password' } });

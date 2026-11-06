@@ -57,6 +57,8 @@ export interface PasswordResetRequestFormProps extends AuthFormProps {
 export interface ResetPasswordFormProps extends PasswordResetRequestFormProps {
   token?: string;
   email?: string;
+  /** Override field IDs when the embedding page already uses the default ID. */
+  idPrefix?: string;
   minPasswordLength?: number;
   validatePasswordConfirmation?: boolean;
   passwordLabel?: React.ReactNode;
@@ -465,7 +467,7 @@ export function PasswordResetRequestForm({ endpoints = {}, components, onSuccess
 
 export function ResetPasswordForm({
   endpoints = {}, components, onSuccess, onError, onSubmitStart, submitClassName,
-  token: initialToken = '', email: initialEmail = '', minPasswordLength,
+  token: initialToken = '', email: initialEmail = '', idPrefix = 'reset-password', minPasswordLength,
   validatePasswordConfirmation = false, passwordLabel = 'Password',
   passwordConfirmationLabel = 'Confirm Password', passwordHelpText,
 }: ResetPasswordFormProps) {
@@ -512,17 +514,17 @@ export function ResetPasswordForm({
     <form className="space-y-4" onSubmit={(event) => void onSubmit(event)}>
       <Input type="hidden" value={token} onChange={(event) => setToken(event.target.value)} />
       <div className="space-y-1">
-        <Label htmlFor="reset-password-email">Email</Label>
-        <Input id="reset-password-email" type="email" autoComplete="email" required value={email} onChange={(event) => setEmail(event.target.value)} />
+        <Label htmlFor={`${idPrefix}-email`}>Email</Label>
+        <Input id={`${idPrefix}-email`} type="email" autoComplete="email" required value={email} onChange={(event) => setEmail(event.target.value)} />
       </div>
       <div className="space-y-1">
-        <Label htmlFor="reset-password">{passwordLabel}</Label>
-        <Input id="reset-password" type="password" autoComplete="new-password" minLength={minPasswordLength} required value={password} onChange={(event) => setPassword(event.target.value)} />
+        <Label htmlFor={idPrefix}>{passwordLabel}</Label>
+        <Input id={idPrefix} type="password" autoComplete="new-password" minLength={minPasswordLength} required value={password} onChange={(event) => setPassword(event.target.value)} />
         {passwordHelpText ? <p className="text-xs text-muted-foreground">{passwordHelpText}</p> : null}
       </div>
       <div className="space-y-1">
-        <Label htmlFor="reset-password-confirmation">{passwordConfirmationLabel}</Label>
-        <Input id="reset-password-confirmation" type="password" autoComplete="new-password" minLength={minPasswordLength} required value={passwordConfirmation} onChange={(event) => setPasswordConfirmation(event.target.value)} />
+        <Label htmlFor={`${idPrefix}-confirmation`}>{passwordConfirmationLabel}</Label>
+        <Input id={`${idPrefix}-confirmation`} type="password" autoComplete="new-password" minLength={minPasswordLength} required value={passwordConfirmation} onChange={(event) => setPasswordConfirmation(event.target.value)} />
       </div>
       <Button type="submit" className={submitClassName} disabled={loading}>{loading ? 'Resetting...' : 'Reset Password'}</Button>
     </form>
