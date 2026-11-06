@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 
+import type * as React from 'react';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
@@ -114,4 +115,14 @@ describe('LoginForm consumer hooks', () => {
       'The server returned an unexpected response. Please try again.',
     ));
   });
+});
+
+
+it('lets the consumer own the shell and passkey separator without changing default cards', () => {
+  const card = vi.fn((props: React.HTMLAttributes<HTMLDivElement>) => <div {...props} />);
+  render(<LoginForm components={{ ...components, Card: card }} unwrapped enablePasskeys enablePasskeyAutofill={false}
+    passkeySeparator={<p>Another sign-in method</p>} />);
+  expect(card).not.toHaveBeenCalled();
+  expect(screen.getByText('Another sign-in method')).toBeTruthy();
+  expect(screen.getByLabelText('Email')).toBeTruthy();
 });
