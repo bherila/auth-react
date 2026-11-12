@@ -15,12 +15,16 @@ permissions:
   contents: read
 
 jobs:
-  test:
-    name: React package (bwh-auth)
+  verify:
+    name: React package (Node ${{ matrix.node }})
+    strategy:
+      fail-fast: false
+      matrix:
+        node: ['22.22.2', '24.15.0', '26']
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 8
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Set up pnpm
         uses: pnpm/action-setup@v4
@@ -28,7 +32,7 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v6
         with:
-          node-version: '24'
+          node-version: ${{ matrix.node }}
           cache: pnpm
 
       - name: Install dependencies
@@ -43,5 +47,22 @@ jobs:
       - name: Build
         run: pnpm build
 
-      - name: Verify package contents
-        run: pnpm pack --pack-destination "$RUNNER_TEMP"
+      - name: Audit dependencies
+        run: pnpm audit --audit-level low
+
+      - name: Pack and verify installed ESM/CJS/type consumers
+        run: |
+          pnpm pack --pack-destination "$RUNNER_TEMP"
+          pnpm verify-package "$RUNNER_TEMP"/bwh-auth-*.tgz
+
+  test:
+    name: React package (bwh-auth)
+    needs: verify
+    if: always()
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 1
+    steps:
+      - name: Require all supported Node lanes
+        env:
+          RESULT: ${{ needs.verify.result }}
+        run: test "$RESULT" = success
