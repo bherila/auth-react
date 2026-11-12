@@ -345,10 +345,19 @@ alias requires an upstream declaration-bundler migration, not an unchecked swap
 to a native compiler. See the [TypeScript 7.0 API notes](https://devblogs.microsoft.com/typescript/announcing-typescript-7-0/).
 
 CI installs the packed artifact into isolated consumers with React 18.3.1 /
-Lucide 0.468.0 and React 19.3.1 / Lucide 1.71.0. It verifies ESM and CommonJS
+Lucide 0.468.0 and React 19.3.1 / Lucide 1.72.0. It verifies ESM and CommonJS
 runtime exports and compiles `.mts` and `.cts` consumers with TypeScript 7.
 React 18/19 peer support and the public entrypoints remain unchanged. The release
 workflow repeats the packed-consumer check before publishing.
+
+### 0.6.4 dependency refresh
+
+This patch publishes the pnpm 12.18.0, tsup 9 and TypeScript 7 toolchain refresh,
+updates the development and packed-consumer Lucide dependency to 1.72.0, and runs
+the packed-consumer checks above. The package's Node engine now requires
+`^22.22.2 || ^24.15.0 || >=26.0.0`, matching its supported build dependencies.
+React 18/19 and Lucide `>=0.468.0 <2.0.0` peer ranges remain unchanged. There are
+no authentication API, component-prop or public-export changes.
 
 ## Releasing
 
