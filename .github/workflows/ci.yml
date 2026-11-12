@@ -55,6 +55,13 @@ jobs:
           pnpm pack --pack-destination "$RUNNER_TEMP"
           pnpm verify-package "$RUNNER_TEMP"/bwh-auth-*.tgz
 
+      - name: Retain verified package
+        uses: actions/upload-artifact@v6
+        with:
+          name: bwh-auth-node-${{ matrix.node }}
+          path: ${{ runner.temp }}/bwh-auth-*.tgz
+          if-no-files-found: error
+
   test:
     name: React package (bwh-auth)
     needs: verify

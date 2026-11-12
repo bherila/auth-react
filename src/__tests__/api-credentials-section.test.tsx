@@ -49,7 +49,7 @@ describe('ApiCredentialsSection', () => {
     await screen.findByLabelText('Token name');
     const wrapper = () => container.querySelector('[data-layout]') as HTMLElement;
     expect(wrapper().dataset.layout).toBe('stacked');
-    expect(wrapper().style.gridTemplateColumns).toBe('minmax(0, 1fr)');
+    expect(wrapper().style.gridTemplateColumns).toBe('minmax(0px, 1fr)');
 
     rerender(<ApiCredentialsSection indexUrl="/i" components={components} layout="columns" />);
     expect(wrapper().dataset.layout).toBe('columns');

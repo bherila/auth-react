@@ -6,7 +6,9 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+assert.equal(process.argv.length, 3, 'Pass exactly one packed candidate.');
 const tarball = resolve(process.argv[2] ?? '');
+const expectedVersion = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')).version;
 assert.match(tarball, /bwh-auth-[0-9]+\.[0-9]+\.[0-9]+\.tgz$/);
 const compiler = join(root, 'node_modules/@typescript/native/bin/tsc');
 const peers = [
@@ -23,6 +25,7 @@ for (const peer of peers) {
       `@types/react@${peer.reactTypes}`, `@types/react-dom@${peer.domTypes}`], { cwd: directory, stdio: 'pipe' });
     const installed = join(directory, 'node_modules/bwh-auth');
     const metadata = JSON.parse(readFileSync(join(installed, 'package.json'), 'utf8'));
+    assert.equal(metadata.version, expectedVersion);
     assert.equal(metadata.exports['.'].import, './dist/index.js');
     assert.equal(metadata.exports['.'].require, './dist/index.cjs');
     assert.equal(metadata.exports['.'].types, './dist/index.d.ts');
