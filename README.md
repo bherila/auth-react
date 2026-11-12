@@ -350,6 +350,14 @@ runtime exports and compiles `.mts` and `.cts` consumers with TypeScript 7.
 React 18/19 peer support and the public entrypoints remain unchanged. The release
 workflow repeats the packed-consumer check before publishing.
 
+### 0.6.4 dependency refresh
+
+This patch publishes the pnpm 12.18.0, tsup 9 and TypeScript 7 toolchain refresh
+with the packed-consumer checks above. The package's Node engine now requires
+`^22.22.2 || ^24.15.0 || >=26.0.0`, matching its supported build dependencies.
+React 18/19 and Lucide `>=0.468.0 <2.0.0` peer ranges remain unchanged. There are
+no authentication API, component-prop or public-export changes.
+
 ## Releasing
 
 Prepare a release from this package directory:
