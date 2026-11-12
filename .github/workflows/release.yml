@@ -32,10 +32,10 @@ jobs:
       contents: write
       id-token: write
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Set up pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@v6
 
       - name: Set up Node.js
         uses: actions/setup-node@v6
@@ -55,6 +55,9 @@ jobs:
 
       - name: Pack tarball
         run: pnpm pack --pack-destination "$RUNNER_TEMP"
+
+      - name: Verify packed ESM/CJS/type consumers
+        run: pnpm verify-package "$RUNNER_TEMP"/bwh-auth-*.tgz
 
       - name: Update npm
         run: npm install -g npm@latest
