@@ -62,17 +62,18 @@ jobs:
       - name: Audit dependencies
         run: pnpm audit --audit-level low
 
-      - name: Pack and verify installed ESM/CJS/type consumers
-        run: |
-          pnpm pack --pack-destination "$RUNNER_TEMP"
-          pnpm verify-package "$RUNNER_TEMP"/bwh-auth-*.tgz
+      - name: Pack candidate
+        run: pnpm pack --pack-destination "$RUNNER_TEMP"
 
-      - name: Retain verified package
+      - name: Retain candidate package
         uses: actions/upload-artifact@v7
         with:
           name: bwh-auth-node-${{ matrix.node }}
           path: ${{ runner.temp }}/bwh-auth-*.tgz
           if-no-files-found: error
+
+      - name: Verify installed ESM/CJS/type consumers
+        run: pnpm verify-package "$RUNNER_TEMP"/bwh-auth-*.tgz
 
   test:
     name: React package (bwh-auth)

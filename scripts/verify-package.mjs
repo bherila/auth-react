@@ -37,7 +37,7 @@ for (const peer of peers) {
     // Both bundlers produce one flat named-export list; fail if that contract changes.
     function declarationExports(packagePath, file) {
       const source = readFileSync(join(packagePath, file), 'utf8');
-      const exports = [...source.matchAll(/export (type )?\{([^}]+)\};?/g)].flatMap((match) =>
+      const exports = [...source.matchAll(/export\s*(type\s+)?\{([^}]+)\};?/g)].flatMap((match) =>
         match[2].split(',').map((name) => `${match[1] ?? ''}${name.trim()}`).filter((name) => name.trim()));
       assert.ok(exports.length > 0, `Missing named declaration exports in ${file}`);
       assert.ok(!/from ['"]\./.test(source), 'Declarations must not depend on unpublished local files.');
@@ -88,6 +88,13 @@ void login; void scopes; void safeApplicationHref('/login');
     writeFileSync(join(directory, 'consumer.cts'), `
 import auth = require('bwh-auth');
 import type { ComponentProps } from 'react';
+import type * as Candidate from 'bwh-auth';
+import type * as Baseline from 'bwh-auth-baseline';
+${typeCompatibility}
+declare const candidateValues: typeof Candidate;
+const baselineValues: typeof Baseline = candidateValues;
+const restoredValues: typeof Candidate = baselineValues;
+void restoredValues;
 declare const components: auth.AuthComponentInput;
 const login: ComponentProps<typeof auth.LoginForm> = { components };
 void login; void auth.safeApplicationHref('/login');
