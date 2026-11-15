@@ -15,6 +15,9 @@ export interface AuthEndpointConfig {
   passkeyDelete?: (id: number | string) => string;
   passkeyAuthOptions?: string;
   passkeyAuth?: string;
+  confirmPassword?: string;
+  passkeyConfirmOptions?: string;
+  passkeyConfirm?: string;
 }
 export type AuthValidationErrors = Record<string, string[]>;
 export type AuthSignupValues = Record<string, string | boolean>;
@@ -251,6 +254,18 @@ interface PasskeyRegistrationResult {
 export declare function getDefaultPasskeyName(): string;
 export declare function isConditionalMediationAvailable(): Promise<boolean>;
 export declare function authenticateWithPasskey({ endpoints, mediation, signal, remember }?: AuthenticateWithPasskeyOptions): Promise<PasskeyAuthenticationResult>;
+export declare class PasswordConfirmationRequiredError extends Error {
+  constructor();
+}
+export declare function confirmPasswordForPasskey({ password, endpoints, signal }: {
+  password: string;
+  endpoints?: AuthEndpointConfig;
+  signal?: AbortSignal;
+}): Promise<void>;
+export declare function confirmPasskey({ endpoints, signal }?: {
+  endpoints?: AuthEndpointConfig;
+  signal?: AbortSignal;
+}): Promise<void>;
 export declare function registerPasskey({ endpoints, name, signal }?: RegisterPasskeyOptions): Promise<PasskeyRegistrationResult>;
 /**
  * Pure selection logic for the scope picker. Implications are a picker-only

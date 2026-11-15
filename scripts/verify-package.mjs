@@ -67,6 +67,10 @@ assert.equal(esm.safeApplicationHref('javascript:alert(1)'), null);
 assert.equal(cjs.safeApplicationHref('javascript:alert(1)'), null);
 const components = { Button: 'button', Card: 'div', CardContent: 'div', CardDescription: 'p', CardHeader: 'header', CardTitle: 'h2', Input: 'input', Label: 'label' };
 for (const bundle of [esm, cjs]) {
+  for (const helper of ['confirmPasskey', 'confirmPasswordForPasskey']) assert.equal(typeof bundle[helper], 'function');
+  assert.ok(new bundle.PasswordConfirmationRequiredError() instanceof Error);
+  await assert.rejects(bundle.confirmPasswordForPasskey({ password: 'synthetic', signal: AbortSignal.abort() }), { name: 'AbortError' });
+  await assert.rejects(bundle.confirmPasskey({ signal: AbortSignal.abort() }), { name: 'AbortError' });
   const html = renderToStaticMarkup(createElement(bundle.ScopePicker, {
     idPrefix: 'packed', scopes: [{ id: 'read', description: 'Read access' }],
     selected: ['read'], onChange() {}, components,
