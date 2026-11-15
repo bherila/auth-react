@@ -26,19 +26,26 @@
   ],
   "exports": {
     ".": {
-      "types": "./dist/index.d.ts",
-      "import": "./dist/index.js",
-      "require": "./dist/index.cjs"
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      },
+      "require": {
+        "types": "./dist/index.d.cts",
+        "default": "./dist/index.cjs"
+      }
     }
   },
   "scripts": {
-    "build": "tsup src/index.ts --format esm,cjs --dts --dts-resolve --tsconfig tsconfig.build.json",
+    "build": "tsdown",
     "release": "node scripts/release.mjs",
     "test": "vitest run",
-    "typecheck": "node node_modules/@typescript/native/bin/tsc --noEmit",
+    "typecheck": "tsc --noEmit",
     "prepare": "pnpm run build",
     "postinstall": "node scripts/spotlight-noindex.mjs",
-    "verify-package": "node scripts/verify-package.mjs"
+    "verify-package": "node scripts/verify-package.mjs",
+    "check:toolchain": "node scripts/check-toolchain.mjs",
+    "test:toolchain": "node --test scripts/check-toolchain.test.mjs"
   },
   "peerDependencies": {
     "lucide-react": ">=0.468.0 <2.0.0",
@@ -51,15 +58,14 @@
     "@types/node": "^26.6.6",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
-    "@typescript/native": "npm:typescript@^7.0.2",
     "esbuild": "0.28.2",
     "jsdom": "^31.0.0",
     "lucide-react": "^1.72.0",
     "react": "^19.3.1",
     "react-dom": "^19.3.1",
     "spotlight-noindex": "1.1.1",
-    "tsup": "^9.0.0",
-    "typescript": "npm:@typescript/typescript6@^6.0.2",
+    "tsdown": "0.23.7",
+    "typescript": "7.0.2",
     "vite": "^7.3.8",
     "vitest": "^5.1.0"
   }
