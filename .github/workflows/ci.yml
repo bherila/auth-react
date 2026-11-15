@@ -59,6 +59,9 @@ jobs:
       - name: Build
         run: pnpm build
 
+      - name: Verify committed build outputs
+        run: git diff --exit-code -- dist
+
       - name: Audit dependencies
         run: pnpm audit --audit-level low
 

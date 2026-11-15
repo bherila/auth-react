@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { declarationExports } from './declaration-exports.mjs';
 import { execFileSync } from 'node:child_process';
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -34,18 +35,10 @@ for (const peer of peers) {
       assert.ok(readFileSync(join(installed, file)).length > 0);
     }
     const baseline = join(directory, 'node_modules/bwh-auth-baseline');
-    // Both bundlers produce one flat named-export list; fail if that contract changes.
-    function declarationExports(packagePath, file) {
-      const source = readFileSync(join(packagePath, file), 'utf8');
-      const exports = [...source.matchAll(/export\s*(type\s+)?\{([^}]+)\};?/g)].flatMap((match) =>
-        match[2].split(',').map((name) => `${match[1] ?? ''}${name.trim()}`).filter((name) => name.trim()));
-      assert.ok(exports.length > 0, `Missing named declaration exports in ${file}`);
-      assert.ok(!/from ['"]\./.test(source), 'Declarations must not depend on unpublished local files.');
-      return exports.sort();
-    }
-    const baselineExports = declarationExports(baseline, 'dist/index.d.ts');
-    assert.deepEqual(declarationExports(installed, 'dist/index.d.ts'), baselineExports);
-    assert.deepEqual(declarationExports(installed, 'dist/index.d.cts'), baselineExports);
+    const readExports = (path, file) => declarationExports(readFileSync(join(path, file), 'utf8'));
+    const baselineExports = readExports(baseline, 'dist/index.d.ts');
+    assert.deepEqual(readExports(installed, 'dist/index.d.ts'), baselineExports);
+    assert.deepEqual(readExports(installed, 'dist/index.d.cts'), baselineExports);
     const typeCompatibility = baselineExports.filter((name) => name.startsWith('type ')).map((entry) => {
       const name = entry.slice(5);
       assert.match(name, /^[A-Za-z_$][\w$]*$/);
@@ -57,6 +50,8 @@ void restored${name};`;
     writeFileSync(join(directory, 'runtime.mjs'), `
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
+import { createElement } from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
 import * as esm from 'bwh-auth';
 import * as baseline from 'bwh-auth-baseline';
 const cjs = createRequire(import.meta.url)('bwh-auth');
@@ -68,6 +63,17 @@ for (const name of ['LoginForm', 'SignupForm', 'ScopePicker', 'authenticateWithP
 }
 assert.equal(esm.safeApplicationHref('javascript:alert(1)'), null);
 assert.equal(cjs.safeApplicationHref('javascript:alert(1)'), null);
+const components = { Button: 'button', Card: 'div', CardContent: 'div', CardDescription: 'p', CardHeader: 'header', CardTitle: 'h2', Input: 'input', Label: 'label' };
+for (const bundle of [esm, cjs]) {
+  const html = renderToStaticMarkup(createElement(bundle.ScopePicker, {
+    idPrefix: 'packed', scopes: [{ id: 'read', description: 'Read access' }],
+    selected: ['read'], onChange() {}, components,
+  }));
+  assert.match(html, /type="checkbox"/);
+  assert.match(html, /Read access/);
+  assert.match(html, /checked=""/);
+}
+
 `);
     execFileSync(process.execPath, ['runtime.mjs'], { cwd: directory, stdio: 'inherit' });
     writeFileSync(join(directory, 'consumer.mts'), `

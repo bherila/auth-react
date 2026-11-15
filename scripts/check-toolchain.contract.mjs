@@ -3,6 +3,7 @@ import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
+import { declarationExports } from './declaration-exports.mjs';
 import { assertPackageIdentity, assertLockIdentities, inspectActiveGraph } from './check-toolchain.mjs';
 
 test('only native 7.0.2 is accepted; pure rule packages remain valid', () => {
@@ -51,5 +52,17 @@ test('active graph reads alias identities, ignores ambient packages and only ski
         assert.throws(() => inspectActiveGraph([]), /native compiler must actually/);
     } finally {
         rmSync(root, { recursive: true, force: true });
+    }
+});
+
+
+test('old export lists and native inline declarations describe the same public API', () => {
+    const old = "declare function fn(): void;\ninterface Props {}\nexport { fn };\nexport type { Props };";
+    const native = "export interface Props {}\nexport declare function fn(): void;\nexport {};";
+    assert.deepEqual(declarationExports(native), declarationExports(old));
+    assert.deepEqual(declarationExports(native), ['fn', 'type Props']);
+    assert.notDeepEqual(declarationExports(native + '\nexport type Extra = string;'), declarationExports(old));
+    for (const invalid of ['', 'export {};', 'export * from "./missing";', 'export { fn };\nexport { fn };']) {
+        assert.throws(() => declarationExports(invalid));
     }
 });
