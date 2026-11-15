@@ -170,6 +170,81 @@ export async function authenticateWithPasskey({ endpoints = {}, mediation, signa
   };
 }
 
+export class PasswordConfirmationRequiredError extends Error {
+  constructor() {
+    super('Confirm your identity before adding a passkey.');
+    this.name = 'PasswordConfirmationRequiredError';
+  }
+}
+
+async function assertPasskeyResponse(response: Response, fallback: string): Promise<void> {
+  if (response.ok) return;
+  const result = await response.json().catch(() => null) as { error?: unknown; message?: unknown } | null;
+  if (response.status === 423 && result?.error === 'password_confirmation_required') {
+    throw new PasswordConfirmationRequiredError();
+  }
+  const message = typeof result?.error === 'string' ? result.error : typeof result?.message === 'string' ? result.message : fallback;
+  throw new Error(message);
+}
+
+export async function confirmPasswordForPasskey({ password, endpoints = {}, signal }: {
+  password: string;
+  endpoints?: AuthEndpointConfig;
+  signal?: AbortSignal;
+}): Promise<void> {
+  throwIfAborted(signal);
+  const response = await fetch(endpoints.confirmPassword ?? '/api/auth/confirm-password', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Accept: 'application/json', 'X-CSRF-TOKEN': getCsrfToken(endpoints.csrfToken) },
+    body: JSON.stringify({ password }),
+    signal,
+  });
+  await assertPasskeyResponse(response, 'Password confirmation failed');
+  throwIfAborted(signal);
+}
+
+export async function confirmPasskey({ endpoints = {}, signal }: {
+  endpoints?: AuthEndpointConfig;
+  signal?: AbortSignal;
+} = {}): Promise<void> {
+  throwIfAborted(signal);
+  const headers = { 'Content-Type': 'application/json', Accept: 'application/json', 'X-CSRF-TOKEN': getCsrfToken(endpoints.csrfToken) };
+  const response = await fetch(endpoints.passkeyConfirmOptions ?? '/api/passkeys/confirm/options', { method: 'POST', headers, signal });
+  await assertPasskeyResponse(response, 'Failed to get confirmation options');
+  const options = await response.json();
+  throwIfAborted(signal);
+  if (!Array.isArray(options.allowCredentials) || options.allowCredentials.length === 0) {
+    throw new Error('No existing passkey is available for this account.');
+  }
+  const credential = await navigator.credentials.get({
+    publicKey: {
+      ...options,
+      challenge: base64urlToArrayBuffer(options.challenge),
+      allowCredentials: options.allowCredentials.map((entry: { type: string; id: string }) => ({ ...entry, id: base64urlToArrayBuffer(entry.id) })),
+      userVerification: 'required',
+    },
+    signal,
+  });
+  throwIfAborted(signal);
+  if (!credential || credential.type !== 'public-key') throw new Error('No passkey selected');
+  const key = credential as PublicKeyCredential;
+  const assertion = key.response as AuthenticatorAssertionResponse;
+  const result = await fetch(endpoints.passkeyConfirm ?? '/api/passkeys/confirm', {
+    method: 'POST', headers, signal,
+    body: JSON.stringify({ credential: {
+      id: key.id, rawId: arrayBufferToBase64url(key.rawId), type: key.type,
+      response: {
+        clientDataJSON: arrayBufferToBase64url(assertion.clientDataJSON),
+        authenticatorData: arrayBufferToBase64url(assertion.authenticatorData),
+        signature: arrayBufferToBase64url(assertion.signature),
+        userHandle: assertion.userHandle ? arrayBufferToBase64url(assertion.userHandle) : null,
+      },
+    } }),
+  });
+  await assertPasskeyResponse(result, 'Passkey confirmation failed');
+  throwIfAborted(signal);
+}
+
 export async function registerPasskey({ endpoints = {}, name, signal }: RegisterPasskeyOptions = {}): Promise<PasskeyRegistrationResult> {
   const registerOptionsUrl = endpoints.passkeyRegisterOptions ?? '/api/passkeys/register/options';
   const registerUrl = endpoints.passkeyRegister ?? '/api/passkeys/register';
@@ -179,16 +254,17 @@ export async function registerPasskey({ endpoints = {}, name, signal }: Register
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
+      Accept: 'application/json',
       'X-CSRF-TOKEN': getCsrfToken(endpoints.csrfToken),
     },
     signal,
   });
 
-  if (!optRes.ok) {
-    throw new Error('Failed to get registration options');
-  }
+  await assertPasskeyResponse(optRes, 'Failed to get registration options');
+  throwIfAborted(signal);
 
   const options = await optRes.json();
+  throwIfAborted(signal);
   const publicKey: PublicKeyCredentialCreationOptions = {
     ...options,
     challenge: base64urlToArrayBuffer(options.challenge),
@@ -203,6 +279,7 @@ export async function registerPasskey({ endpoints = {}, name, signal }: Register
   };
 
   const credential = await navigator.credentials.create({ publicKey, signal });
+  throwIfAborted(signal);
   if (!credential || credential.type !== 'public-key') {
     throw new Error('Failed to create credential');
   }
@@ -224,16 +301,16 @@ export async function registerPasskey({ endpoints = {}, name, signal }: Register
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
+      Accept: 'application/json',
       'X-CSRF-TOKEN': getCsrfToken(endpoints.csrfToken),
     },
     body: JSON.stringify({ credential: credentialData, name: passkeyName }),
     signal,
   });
 
+  await assertPasskeyResponse(verifyRes, 'Registration failed');
+  throwIfAborted(signal);
   const result = await verifyRes.json();
-  if (!verifyRes.ok) {
-    throw new Error(result.error || result.message || 'Registration failed');
-  }
 
   return { result };
 }

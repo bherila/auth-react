@@ -59,9 +59,6 @@ jobs:
       - name: Build
         run: pnpm build
 
-      - name: Verify committed build outputs
-        run: git diff --exit-code -- dist
-
       - name: Audit dependencies
         run: pnpm audit --audit-level low
 
@@ -74,6 +71,9 @@ jobs:
           name: bwh-auth-node-${{ matrix.node }}
           path: ${{ runner.temp }}/bwh-auth-*.tgz
           if-no-files-found: error
+
+      - name: Verify committed build outputs
+        run: git diff --exit-code -- dist
 
       - name: Verify installed ESM/CJS/type consumers
         run: pnpm verify-package "$RUNNER_TEMP"/bwh-auth-*.tgz

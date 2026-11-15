@@ -2,9 +2,10 @@ import { Key, Plus, Trash2 } from 'lucide-react';
 import * as React from 'react';
 import { flushSync } from 'react-dom';
 
+import { throwIfAborted } from './abort-utils';
 import { resolveAuthComponents } from './components';
 import type { AuthComponentInput, AuthEndpointConfig, Passkey } from './types';
-import { getCsrfToken, getDefaultPasskeyName, isAbortError, registerPasskey as createPasskey } from './webauthn-utils';
+import { confirmPasskey, confirmPasswordForPasskey, getCsrfToken, getDefaultPasskeyName, isAbortError, PasswordConfirmationRequiredError, registerPasskey as createPasskey } from './webauthn-utils';
 
 interface PasskeySectionProps {
   endpoints?: AuthEndpointConfig;
@@ -19,6 +20,21 @@ export function PasskeySection({ endpoints = {}, components, onSuccess, onError 
   const [loading, setLoading] = React.useState(true);
   const [registering, setRegistering] = React.useState(false);
   const [pendingName, setPendingName] = React.useState('');
+  const [needsConfirmation, setNeedsConfirmation] = React.useState(false);
+  const [password, setPassword] = React.useState('');
+  const [confirmationError, setConfirmationError] = React.useState('');
+  const operation = React.useRef<AbortController | null>(null);
+  const passwordId = React.useId();
+
+  React.useEffect(() => {
+    operation.current = null;
+    setRegistering(false);
+    setNeedsConfirmation(false);
+    setPassword('');
+    setConfirmationError('');
+    setPendingName('');
+    return () => { operation.current?.abort(); operation.current = null; };
+  }, [endpoints.confirmPassword, endpoints.passkeyConfirmOptions, endpoints.passkeyConfirm, endpoints.passkeyRegisterOptions, endpoints.passkeyRegister, endpoints.csrfToken]);
 
   const listUrl = endpoints.passkeyList ?? '/api/passkeys';
   const registerOptionsUrl = endpoints.passkeyRegisterOptions ?? '/api/passkeys/register/options';
@@ -42,23 +58,53 @@ export function PasskeySection({ endpoints = {}, components, onSuccess, onError 
     void fetchPasskeys();
   }, [fetchPasskeys]);
 
-  async function registerPasskey() {
+  async function registerPasskey(method?: 'password' | 'passkey') {
+    if (operation.current && !operation.current.signal.aborted) return;
+    const controller = new AbortController();
+    operation.current = controller;
     const name = pendingName || getDefaultPasskeyName();
+    const submittedPassword = password;
+    setPassword('');
+    setConfirmationError('');
     flushSync(() => setPendingName(name));
     setRegistering(true);
 
     try {
-      await createPasskey({ endpoints: { ...endpoints, passkeyRegisterOptions: registerOptionsUrl, passkeyRegister: registerUrl }, name });
+      if (method === 'password') await confirmPasswordForPasskey({ password: submittedPassword, endpoints, signal: controller.signal });
+      if (method === 'passkey') await confirmPasskey({ endpoints, signal: controller.signal });
+      throwIfAborted(controller.signal);
+      await createPasskey({ endpoints: { ...endpoints, passkeyRegisterOptions: registerOptionsUrl, passkeyRegister: registerUrl }, name, signal: controller.signal });
+      throwIfAborted(controller.signal);
+      setNeedsConfirmation(false);
       setPendingName('');
       onSuccess?.('Passkey registered successfully.');
       await fetchPasskeys();
     } catch (caughtError: unknown) {
-      if (!isAbortError(caughtError)) {
-        onError?.('passkeys', caughtError instanceof Error ? caughtError.message : 'Passkey registration failed');
+      if (!controller.signal.aborted && !isAbortError(caughtError)) {
+        if (caughtError instanceof PasswordConfirmationRequiredError) {
+          setNeedsConfirmation(true);
+          if (method) setConfirmationError('Confirmation is still required. Try again or sign in again.');
+        } else {
+          const message = caughtError instanceof Error ? caughtError.message : 'Passkey registration failed';
+          if (method) setConfirmationError(message);
+          onError?.('passkeys', message);
+        }
       }
     } finally {
-      setRegistering(false);
+      if (operation.current === controller) {
+        operation.current = null;
+        if (!controller.signal.aborted) setRegistering(false);
+      }
     }
+  }
+
+  function cancelConfirmation() {
+    operation.current?.abort();
+    operation.current = null;
+    setRegistering(false);
+    setPassword('');
+    setConfirmationError('');
+    setNeedsConfirmation(false);
   }
 
   async function deletePasskey(id: number) {
@@ -119,10 +165,25 @@ export function PasskeySection({ endpoints = {}, components, onSuccess, onError 
               <Label htmlFor="passkey-name">Passkey name</Label>
               <Input id="passkey-name" value={pendingName} onChange={(event) => setPendingName(event.target.value)} placeholder={getDefaultPasskeyName()} />
             </div>
-            <Button type="button" className="self-end" variant="outline" disabled={registering} onClick={() => void registerPasskey()}>
+            <Button type="button" className="self-end" variant="outline" disabled={registering || needsConfirmation} onClick={() => void registerPasskey()}>
               <Plus />
               {registering ? 'Registering...' : 'Add Passkey'}
             </Button>
+          </div>
+        ) : null}
+        {needsConfirmation ? (
+          <div role="group" aria-label="Confirm your identity" className="space-y-3">
+            <p>Confirm your identity to add a passkey. Use your password or an existing passkey.</p>
+            <div className="space-y-1">
+              <Label htmlFor={passwordId}>Current password</Label>
+              <Input id={passwordId} type="password" autoComplete="current-password" value={password} disabled={registering} onChange={(event) => setPassword(event.target.value)} />
+            </div>
+            {confirmationError ? <p role="alert">{confirmationError}</p> : null}
+            <div className="flex flex-wrap gap-2">
+              <Button type="button" disabled={registering || password.length === 0} onClick={() => void registerPasskey('password')}>Confirm password and continue</Button>
+              <Button type="button" variant="outline" disabled={registering} onClick={() => void registerPasskey('passkey')}>Use existing passkey</Button>
+              <Button type="button" variant="ghost" onClick={cancelConfirmation}>Cancel</Button>
+            </div>
           </div>
         ) : null}
       </CardContent>

@@ -37,8 +37,10 @@ for (const peer of peers) {
     const baseline = join(directory, 'node_modules/bwh-auth-baseline');
     const readExports = (path, file) => declarationExports(readFileSync(join(path, file), 'utf8'));
     const baselineExports = readExports(baseline, 'dist/index.d.ts');
-    assert.deepEqual(readExports(installed, 'dist/index.d.ts'), baselineExports);
-    assert.deepEqual(readExports(installed, 'dist/index.d.cts'), baselineExports);
+    const additions = ['PasswordConfirmationRequiredError', 'confirmPasskey', 'confirmPasswordForPasskey'];
+    const expectedExports = [...baselineExports, ...additions].sort();
+    assert.deepEqual(readExports(installed, 'dist/index.d.ts'), expectedExports);
+    assert.deepEqual(readExports(installed, 'dist/index.d.cts'), expectedExports);
     const typeCompatibility = baselineExports.filter((name) => name.startsWith('type ')).map((entry) => {
       const name = entry.slice(5);
       assert.match(name, /^[A-Za-z_$][\w$]*$/);
@@ -56,7 +58,7 @@ import * as esm from 'bwh-auth';
 import * as baseline from 'bwh-auth-baseline';
 const cjs = createRequire(import.meta.url)('bwh-auth');
 assert.deepEqual(Object.keys(esm).sort(), Object.keys(cjs).sort());
-assert.deepEqual(Object.keys(esm).sort(), Object.keys(baseline).sort());
+assert.deepEqual(Object.keys(esm).sort(), [...Object.keys(baseline), ...${JSON.stringify(additions)}].sort());
 for (const name of ['LoginForm', 'SignupForm', 'ScopePicker', 'authenticateWithPasskey', 'safeApplicationHref']) {
   assert.equal(typeof esm[name], 'function');
   assert.equal(typeof cjs[name], 'function');
@@ -82,9 +84,10 @@ import type { ComponentProps } from 'react';
 import type * as Candidate from 'bwh-auth';
 import type * as Baseline from 'bwh-auth-baseline';
 ${typeCompatibility}
-declare const candidateValues: typeof Candidate;
+type RetainedValues = Pick<typeof Candidate, keyof typeof Baseline>;
+declare const candidateValues: RetainedValues;
 const baselineValues: typeof Baseline = candidateValues;
-const restoredValues: typeof Candidate = baselineValues;
+const restoredValues: RetainedValues = baselineValues;
 void restoredValues;
 declare const components: AuthComponentInput;
 const login: ComponentProps<typeof LoginForm> = { components, enablePasskeys: true };
@@ -97,9 +100,10 @@ import type { ComponentProps } from 'react';
 import type * as Candidate from 'bwh-auth';
 import type * as Baseline from 'bwh-auth-baseline';
 ${typeCompatibility}
-declare const candidateValues: typeof Candidate;
+type RetainedValues = Pick<typeof Candidate, keyof typeof Baseline>;
+declare const candidateValues: RetainedValues;
 const baselineValues: typeof Baseline = candidateValues;
-const restoredValues: typeof Candidate = baselineValues;
+const restoredValues: RetainedValues = baselineValues;
 void restoredValues;
 declare const components: auth.AuthComponentInput;
 const login: ComponentProps<typeof auth.LoginForm> = { components };
