@@ -337,12 +337,18 @@ ranges match the build/test dependencies; CI covers both minimum versions and
 Node 26. Run focused checks locally and use CI for the full tests, typecheck,
 build and packed-consumer matrix.
 
-Typechecking uses TypeScript 7.0.2 explicitly. The `typescript` dependency is
-intentionally an alias to the last JavaScript compiler (`@typescript/typescript6`)
-for tsup's declaration bundler only. tsup 9 still calls `createProgram` and
-`createCompilerHost`; TypeScript 7.0's main export has neither API. Removing that
-alias requires an upstream declaration-bundler migration, not an unchecked swap
-to a native compiler. See the [TypeScript 7.0 API notes](https://devblogs.microsoft.com/typescript/announcing-typescript-7-0/).
+Typechecking and declaration generation use the native TypeScript 7.0.2 compiler.
+The build uses exact tsdown 0.23.7 with rolldown-plugin-dts pinned to 0.30.2,
+whose `tsgo` backend supports the TS7.0 CLI. That fallback is deprecated upstream;
+requalify the build and packed-consumer matrix before changing either pin or
+moving to the TS7.1 API backend. No classic TypeScript compiler or ESLint engine
+is installed. `pnpm check:toolchain` verifies the resolved lock and actual
+installed package identities, including aliases.
+
+The build retains `dist/index.js`, `dist/index.cjs`, `dist/index.d.ts` and
+`dist/index.d.cts`. Conditional exports route ESM and CJS consumers to matching
+declarations. Packed consumers also compare runtime exports and declaration type
+compatibility against the published 0.6.4 baseline.
 
 CI installs the packed artifact into isolated consumers with React 18.3.1 /
 Lucide 0.468.0 and React 19.3.1 / Lucide 1.72.0. It verifies ESM and CommonJS

@@ -47,11 +47,19 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Verify native toolchain
+        run: |
+          pnpm check:toolchain
+          pnpm test:toolchain
+
       - name: Type-check
         run: pnpm typecheck
 
       - name: Build
         run: pnpm build
+
+      - name: Verify committed build outputs
+        run: git diff --exit-code -- dist
 
       - name: Pack tarball
         run: pnpm pack --pack-destination "$RUNNER_TEMP"
