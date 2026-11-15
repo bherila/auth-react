@@ -138,6 +138,83 @@ async function authenticateWithPasskey({ endpoints = {}, mediation, signal, reme
 		redirectUrl: result.redirect || "/"
 	};
 }
+var PasswordConfirmationRequiredError = class extends Error {
+	constructor() {
+		super("Confirm your identity before adding a passkey.");
+		this.name = "PasswordConfirmationRequiredError";
+	}
+};
+async function assertPasskeyResponse(response, fallback) {
+	if (response.ok) return;
+	const result = await response.json().catch(() => null);
+	if (response.status === 423 && result?.error === "password_confirmation_required") throw new PasswordConfirmationRequiredError();
+	const message = typeof result?.error === "string" ? result.error : typeof result?.message === "string" ? result.message : fallback;
+	throw new Error(message);
+}
+async function confirmPasswordForPasskey({ password, endpoints = {}, signal }) {
+	throwIfAborted(signal);
+	await assertPasskeyResponse(await fetch(endpoints.confirmPassword ?? "/api/auth/confirm-password", {
+		method: "POST",
+		headers: {
+			"Content-Type": "application/json",
+			Accept: "application/json",
+			"X-CSRF-TOKEN": getCsrfToken(endpoints.csrfToken)
+		},
+		body: JSON.stringify({ password }),
+		signal
+	}), "Password confirmation failed");
+	throwIfAborted(signal);
+}
+async function confirmPasskey({ endpoints = {}, signal } = {}) {
+	throwIfAborted(signal);
+	const headers = {
+		"Content-Type": "application/json",
+		Accept: "application/json",
+		"X-CSRF-TOKEN": getCsrfToken(endpoints.csrfToken)
+	};
+	const response = await fetch(endpoints.passkeyConfirmOptions ?? "/api/passkeys/confirm/options", {
+		method: "POST",
+		headers,
+		signal
+	});
+	await assertPasskeyResponse(response, "Failed to get confirmation options");
+	const options = await response.json();
+	throwIfAborted(signal);
+	if (!Array.isArray(options.allowCredentials) || options.allowCredentials.length === 0) throw new Error("No existing passkey is available for this account.");
+	const credential = await navigator.credentials.get({
+		publicKey: {
+			...options,
+			challenge: base64urlToArrayBuffer(options.challenge),
+			allowCredentials: options.allowCredentials.map((entry) => ({
+				...entry,
+				id: base64urlToArrayBuffer(entry.id)
+			})),
+			userVerification: "required"
+		},
+		signal
+	});
+	throwIfAborted(signal);
+	if (!credential || credential.type !== "public-key") throw new Error("No passkey selected");
+	const key = credential;
+	const assertion = key.response;
+	await assertPasskeyResponse(await fetch(endpoints.passkeyConfirm ?? "/api/passkeys/confirm", {
+		method: "POST",
+		headers,
+		signal,
+		body: JSON.stringify({ credential: {
+			id: key.id,
+			rawId: arrayBufferToBase64url(key.rawId),
+			type: key.type,
+			response: {
+				clientDataJSON: arrayBufferToBase64url(assertion.clientDataJSON),
+				authenticatorData: arrayBufferToBase64url(assertion.authenticatorData),
+				signature: arrayBufferToBase64url(assertion.signature),
+				userHandle: assertion.userHandle ? arrayBufferToBase64url(assertion.userHandle) : null
+			}
+		} })
+	}), "Passkey confirmation failed");
+	throwIfAborted(signal);
+}
 async function registerPasskey({ endpoints = {}, name, signal } = {}) {
 	const registerOptionsUrl = endpoints.passkeyRegisterOptions ?? "/api/passkeys/register/options";
 	const registerUrl = endpoints.passkeyRegister ?? "/api/passkeys/register";
@@ -146,12 +223,15 @@ async function registerPasskey({ endpoints = {}, name, signal } = {}) {
 		method: "POST",
 		headers: {
 			"Content-Type": "application/json",
+			Accept: "application/json",
 			"X-CSRF-TOKEN": getCsrfToken(endpoints.csrfToken)
 		},
 		signal
 	});
-	if (!optRes.ok) throw new Error("Failed to get registration options");
+	await assertPasskeyResponse(optRes, "Failed to get registration options");
+	throwIfAborted(signal);
 	const options = await optRes.json();
+	throwIfAborted(signal);
 	const publicKey = {
 		...options,
 		challenge: base64urlToArrayBuffer(options.challenge),
@@ -168,6 +248,7 @@ async function registerPasskey({ endpoints = {}, name, signal } = {}) {
 		publicKey,
 		signal
 	});
+	throwIfAborted(signal);
 	if (!credential || credential.type !== "public-key") throw new Error("Failed to create credential");
 	const pkCredential = credential;
 	const response = pkCredential.response;
@@ -185,6 +266,7 @@ async function registerPasskey({ endpoints = {}, name, signal } = {}) {
 		method: "POST",
 		headers: {
 			"Content-Type": "application/json",
+			Accept: "application/json",
 			"X-CSRF-TOKEN": getCsrfToken(endpoints.csrfToken)
 		},
 		body: JSON.stringify({
@@ -193,9 +275,9 @@ async function registerPasskey({ endpoints = {}, name, signal } = {}) {
 		}),
 		signal
 	});
-	const result = await verifyRes.json();
-	if (!verifyRes.ok) throw new Error(result.error || result.message || "Registration failed");
-	return { result };
+	await assertPasskeyResponse(verifyRes, "Registration failed");
+	throwIfAborted(signal);
+	return { result: await verifyRes.json() };
 }
 // src/passkey-authentication.ts
 const PasskeyAuthenticationContext = React.createContext(null);
@@ -1006,6 +1088,30 @@ function PasskeySection({ endpoints = {}, components, onSuccess, onError }) {
 	const [loading, setLoading] = React.useState(true);
 	const [registering, setRegistering] = React.useState(false);
 	const [pendingName, setPendingName] = React.useState("");
+	const [needsConfirmation, setNeedsConfirmation] = React.useState(false);
+	const [password, setPassword] = React.useState("");
+	const [confirmationError, setConfirmationError] = React.useState("");
+	const operation = React.useRef(null);
+	const passwordId = React.useId();
+	React.useEffect(() => {
+		operation.current = null;
+		setRegistering(false);
+		setNeedsConfirmation(false);
+		setPassword("");
+		setConfirmationError("");
+		setPendingName("");
+		return () => {
+			operation.current?.abort();
+			operation.current = null;
+		};
+	}, [
+		endpoints.confirmPassword,
+		endpoints.passkeyConfirmOptions,
+		endpoints.passkeyConfirm,
+		endpoints.passkeyRegisterOptions,
+		endpoints.passkeyRegister,
+		endpoints.csrfToken
+	]);
 	const listUrl = endpoints.passkeyList ?? "/api/passkeys";
 	const registerOptionsUrl = endpoints.passkeyRegisterOptions ?? "/api/passkeys/register/options";
 	const registerUrl = endpoints.passkeyRegister ?? "/api/passkeys/register";
@@ -1023,27 +1129,66 @@ function PasskeySection({ endpoints = {}, components, onSuccess, onError }) {
 	React.useEffect(() => {
 		fetchPasskeys();
 	}, [fetchPasskeys]);
-	async function registerPasskey$1() {
+	async function registerPasskey$1(method) {
+		if (operation.current && !operation.current.signal.aborted) return;
+		const controller = new AbortController();
+		operation.current = controller;
 		const name = pendingName || getDefaultPasskeyName();
+		const submittedPassword = password;
+		setPassword("");
+		setConfirmationError("");
 		flushSync(() => setPendingName(name));
 		setRegistering(true);
 		try {
+			if (method === "password") await confirmPasswordForPasskey({
+				password: submittedPassword,
+				endpoints,
+				signal: controller.signal
+			});
+			if (method === "passkey") await confirmPasskey({
+				endpoints,
+				signal: controller.signal
+			});
+			throwIfAborted(controller.signal);
 			await registerPasskey({
 				endpoints: {
 					...endpoints,
 					passkeyRegisterOptions: registerOptionsUrl,
 					passkeyRegister: registerUrl
 				},
-				name
+				name,
+				signal: controller.signal
 			});
+			throwIfAborted(controller.signal);
+			setNeedsConfirmation(false);
 			setPendingName("");
 			onSuccess?.("Passkey registered successfully.");
 			await fetchPasskeys();
 		} catch (caughtError) {
-			if (!isAbortError(caughtError)) onError?.("passkeys", caughtError instanceof Error ? caughtError.message : "Passkey registration failed");
+			if (!controller.signal.aborted && !isAbortError(caughtError)) {
+				if (caughtError instanceof PasswordConfirmationRequiredError) {
+					setNeedsConfirmation(true);
+					if (method) setConfirmationError("Confirmation is still required. Try again or sign in again.");
+				} else {
+					const message = caughtError instanceof Error ? caughtError.message : "Passkey registration failed";
+					if (method) setConfirmationError(message);
+					onError?.("passkeys", message);
+				}
+			}
 		} finally {
-			setRegistering(false);
+			if (operation.current === controller) {
+				operation.current = null;
+				if (!controller.signal.aborted) setRegistering(false);
+			}
 		}
+	}
+	function cancelConfirmation() {
+		operation.current?.abort();
+		operation.current = null;
+		setRegistering(false);
+		setPassword("");
+		setConfirmationError("");
+		setNeedsConfirmation(false);
 	}
 	async function deletePasskey(id) {
 		try {
@@ -1111,10 +1256,60 @@ function PasskeySection({ endpoints = {}, components, onSuccess, onError }) {
 					type: "button",
 					className: "self-end",
 					variant: "outline",
-					disabled: registering,
+					disabled: registering || needsConfirmation,
 					onClick: () => void registerPasskey$1(),
 					children: [/* @__PURE__ */ jsx(Plus, {}), registering ? "Registering..." : "Add Passkey"]
 				})]
+			}) : null,
+			needsConfirmation ? /* @__PURE__ */ jsxs("div", {
+				role: "group",
+				"aria-label": "Confirm your identity",
+				className: "space-y-3",
+				children: [
+					/* @__PURE__ */ jsx("p", { children: "Confirm your identity to add a passkey. Use your password or an existing passkey." }),
+					/* @__PURE__ */ jsxs("div", {
+						className: "space-y-1",
+						children: [/* @__PURE__ */ jsx(Label, {
+							htmlFor: passwordId,
+							children: "Current password"
+						}), /* @__PURE__ */ jsx(Input, {
+							id: passwordId,
+							type: "password",
+							autoComplete: "current-password",
+							value: password,
+							disabled: registering,
+							onChange: (event) => setPassword(event.target.value)
+						})]
+					}),
+					confirmationError ? /* @__PURE__ */ jsx("p", {
+						role: "alert",
+						children: confirmationError
+					}) : null,
+					/* @__PURE__ */ jsxs("div", {
+						className: "flex flex-wrap gap-2",
+						children: [
+							/* @__PURE__ */ jsx(Button, {
+								type: "button",
+								disabled: registering || password.length === 0,
+								onClick: () => void registerPasskey$1("password"),
+								children: "Confirm password and continue"
+							}),
+							/* @__PURE__ */ jsx(Button, {
+								type: "button",
+								variant: "outline",
+								disabled: registering,
+								onClick: () => void registerPasskey$1("passkey"),
+								children: "Use existing passkey"
+							}),
+							/* @__PURE__ */ jsx(Button, {
+								type: "button",
+								variant: "ghost",
+								onClick: cancelConfirmation,
+								children: "Cancel"
+							})
+						]
+					})
+				]
 			}) : null
 		]
 	})] });
@@ -2315,4 +2510,4 @@ function refusalMessage(status, payload) {
 	if (status === 404) return "That credential no longer exists, or creating credentials is unavailable right now.";
 	return "That action could not be completed.";
 }
-export { ApiCredentialsSection, ChangePasswordForm, LoginForm, PasskeyLoginButton, PasskeySection, PasswordResetRequestForm, ResetPasswordForm, ScopePicker, SignupForm, TwoFactorForm, arrayBufferToBase64url, authenticateWithPasskey, base64urlToArrayBuffer, closeImplications, describeDuration, getCsrfToken, getDefaultPasskeyName, inCatalogOrder, isAbortError, isConditionalMediationAvailable, neededBy, registerPasskey, relyingApplicationsFrom, restrictImplications, safeApplicationHref, sameSelection, withScopes, withoutScopes };
+export { ApiCredentialsSection, ChangePasswordForm, LoginForm, PasskeyLoginButton, PasskeySection, PasswordConfirmationRequiredError, PasswordResetRequestForm, ResetPasswordForm, ScopePicker, SignupForm, TwoFactorForm, arrayBufferToBase64url, authenticateWithPasskey, base64urlToArrayBuffer, closeImplications, confirmPasskey, confirmPasswordForPasskey, describeDuration, getCsrfToken, getDefaultPasskeyName, inCatalogOrder, isAbortError, isConditionalMediationAvailable, neededBy, registerPasskey, relyingApplicationsFrom, restrictImplications, safeApplicationHref, sameSelection, withScopes, withoutScopes };

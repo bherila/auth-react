@@ -365,6 +365,29 @@ the packed-consumer checks above. The package's Node engine now requires
 React 18/19 and Lucide `>=0.468.0 <2.0.0` peer ranges remain unchanged. There are
 no authentication API, component-prop or public-export changes.
 
+### 0.6.5 passkey enrollment confirmation
+
+Passkey enrollment reacts to auth-laravel 0.30's JSON 423
+`password_confirmation_required` response with an inline password or existing
+passkey confirmation step. No extra prompt appears for older servers or a fresh
+session. Passwordless accounts can prove their identity with an existing passkey;
+that assertion requires user verification and signs nobody in. After confirmation,
+enrollment starts with fresh options rather than replaying an old attestation.
+
+`AuthEndpointConfig` adds optional `confirmPassword`, `passkeyConfirmOptions` and
+`passkeyConfirm` URLs. Mounted providers should supply their server-generated URLs.
+Defaults are `/api/auth/confirm-password`, `/api/passkeys/confirm/options` and
+`/api/passkeys/confirm`. `confirmPasswordForPasskey`, `confirmPasskey` and
+`PasswordConfirmationRequiredError` are exported for app-owned enrollment flows.
+Cancellation, unmount and endpoint/session changes abort pending confirmation and
+prevent its continuation. Passwords are sent only to the confirmation endpoint,
+are cleared from the input, and are never persisted. The server remains responsible
+for account binding, expiry, MFA policy and authorization. Removal policy is unchanged.
+
+CI retains generated tarballs before asserting dist reproducibility, so a source
+change can regenerate its committed bundles in hosted CI without relaxing the
+required drift or packed-consumer gates.
+
 ## Releasing
 
 Prepare a release from this package directory:

@@ -16,6 +16,9 @@ export interface AuthEndpointConfig {
   passkeyDelete?: (id: number | string) => string;
   passkeyAuthOptions?: string;
   passkeyAuth?: string;
+  confirmPassword?: string;
+  passkeyConfirmOptions?: string;
+  passkeyConfirm?: string;
 }
 
 export type AuthValidationErrors = Record<string, string[]>;
