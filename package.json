@@ -45,7 +45,7 @@
     "postinstall": "node scripts/spotlight-noindex.mjs",
     "verify-package": "node scripts/verify-package.mjs",
     "check:toolchain": "node scripts/check-toolchain.mjs",
-    "test:toolchain": "node --test scripts/check-toolchain.test.mjs"
+    "test:toolchain": "node --test scripts/check-toolchain.contract.mjs"
   },
   "peerDependencies": {
     "lucide-react": ">=0.468.0 <2.0.0",

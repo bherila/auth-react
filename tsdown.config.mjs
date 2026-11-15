@@ -6,5 +6,6 @@ export default defineConfig({
     platform: 'browser',
     target: 'es2022',
     tsconfig: 'tsconfig.build.json',
-    dts: { generator: 'tsgo' },
+    sourcemap: false,
+    dts: { generator: 'tsgo', sourcemap: false },
 });
