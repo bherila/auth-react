@@ -332,7 +332,7 @@ Passkey components default to the Laravel package routes:
 
 ## Development toolchain
 
-Use pnpm 12.18.0 and Node 22.22.2+, 24.15.0+, or 26+. The supported Node
+Use pnpm 12.23.0 and Node 22.22.2+, 24.15.0+, or 26+. The supported Node
 ranges match the build/test dependencies; CI covers both minimum versions and
 Node 26. Run focused checks locally and use CI for the full tests, typecheck,
 build and packed-consumer matrix.
@@ -351,7 +351,7 @@ declarations. Packed consumers also compare runtime exports and declaration type
 compatibility against the published 0.6.4 baseline.
 
 CI installs the packed artifact into isolated consumers with React 18.3.1 /
-Lucide 0.468.0 and React 19.3.1 / Lucide 1.72.0. It verifies ESM and CommonJS
+Lucide 0.468.0 and React 19.3.1 / Lucide 1.81.0. It verifies ESM and CommonJS
 runtime exports and compiles `.mts` and `.cts` consumers with TypeScript 7.
 React 18/19 peer support and the public entrypoints remain unchanged. The release
 workflow repeats the packed-consumer check before publishing.
