@@ -14,7 +14,7 @@ assert.match(tarball, /bwh-auth-[0-9]+\.[0-9]+\.[0-9]+\.tgz$/);
 const compiler = join(root, 'node_modules/typescript/bin/tsc');
 const peers = [
   { react: '18.3.1', reactTypes: '18.3.31', domTypes: '18.3.7', lucide: '0.468.0' },
-  { react: '19.3.1', reactTypes: '19.3.0', domTypes: '19.3.0', lucide: '1.72.0' },
+  { react: '19.3.1', reactTypes: '19.3.3', domTypes: '19.3.0', lucide: '1.81.0' },
 ];
 
 for (const peer of peers) {
